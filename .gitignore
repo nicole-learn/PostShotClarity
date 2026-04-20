@@ -38,5 +38,7 @@ pnpm-debug.log*
 next-env.d.ts
 
 # remotion render artifacts
-/public/tmp/
 /out/
+
+# remotion lambda setup scratch (generated policies, etc.)
+/.lambda-setup/
