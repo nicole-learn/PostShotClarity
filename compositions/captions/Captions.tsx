@@ -13,57 +13,119 @@ import {
 import { chunkLines, type CaptionChunk } from "./chunk"
 import {
   DEFAULT_CAPTION_LAYOUT,
+  DEFAULT_PRESET_INDEX,
   SAFE_ZONE_WIDTH,
+  STYLE_PRESETS,
+  type CaptionAnimation,
   type CaptionLayout,
+  type CaptionPresetIndex,
   type CaptionStyle,
   type CaptionsProps,
+  type CleanPreset,
+  type GradientPreset,
+  type ImpactPreset,
+  type KaraokePreset,
+  type NeonPreset,
+  type OutlinedPreset,
+  type PopPreset,
+  type ShadowPreset,
+  type StylePresetMap,
 } from "./types"
 
 const SANS =
   '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, Roboto, "Helvetica Neue", Arial, sans-serif'
-const MONO =
-  'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace'
 
 const STYLE_BASE_FONT: Record<CaptionStyle, number> = {
   clean: 0.065,
   pop: 0.082,
   karaoke: 0.07,
-  neon: 0.074,
-  minimal: 0.044,
+  neon: 0.072,
   impact: 0.094,
-  highlight: 0.064,
-  typewriter: 0.054,
-  bubble: 0.058,
   shadow: 0.086,
+  gradient: 0.084,
+  outlined: 0.09,
+}
+
+const STYLE_CHAR_SCALE: Record<CaptionStyle, number> = {
+  impact: 1,
+  outlined: 1.04,
+  shadow: 1.07,
+  gradient: 1.11,
+  pop: 1.11,
+  neon: 1.26,
+  karaoke: 1.48,
+  clean: 1.67,
 }
 
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3)
-const easeOutQuint = (t: number) => 1 - Math.pow(1 - t, 5)
+
+const IDLE_ANIM = { opacity: 1, transform: "none" } as const
 
 export const Captions: React.FC<CaptionsProps> = ({
   videoSrc,
   lines,
   style,
   layout,
+  animation = "fade",
+  presetIndex,
   useOffthread = false,
 }) => {
   const { fps } = useVideoConfig()
   const VideoComp = useOffthread ? OffthreadVideo : Video
   const effective = layout ?? DEFAULT_CAPTION_LAYOUT
+  const presets = presetIndex ?? DEFAULT_PRESET_INDEX
+  const preset = resolvePreset(style, presets)
+
+  const effectiveMaxChars = React.useMemo(() => {
+    // "Auto" (slider = 0) → one word per chunk for a punchy, modern feel.
+    if (effective.maxCharsPerLine <= 0) return 1
+    return Math.max(
+      1,
+      Math.round(effective.maxCharsPerLine * STYLE_CHAR_SCALE[style])
+    )
+  }, [effective.maxCharsPerLine, style])
+
   const chunks = React.useMemo(
-    () => chunkLines(lines, effective.maxWordsPerLine),
-    [lines, effective.maxWordsPerLine]
+    () => chunkLines(lines, effectiveMaxChars),
+    [lines, effectiveMaxChars]
   )
 
   return (
     <AbsoluteFill style={{ background: "black" }}>
       {videoSrc ? <VideoComp src={videoSrc} /> : null}
-      {chunks.map((chunk) => {
+      {chunks.map((chunk, i) => {
         const from = Math.max(0, Math.round(chunk.start * fps))
-        const dur = Math.max(1, Math.round((chunk.end - chunk.start) * fps))
+        const rawDur = Math.max(
+          1,
+          Math.round((chunk.end - chunk.start) * fps)
+        )
+        // Clamp each chunk's end to the next chunk's start. Without this,
+        // ASR-provided word timings that slightly overlap (common on fast
+        // speech) + `Math.max(lastEnd, nextStart)` in chunkLines make two
+        // Sequences active on the same frame, painting both captions.
+        const nextFrom =
+          i + 1 < chunks.length
+            ? Math.max(0, Math.round(chunks[i + 1].start * fps))
+            : Infinity
+        const dur = Math.max(1, Math.min(rawDur, nextFrom - from))
         return (
-          <Sequence key={chunk.id} from={from} durationInFrames={dur}>
-            <ChunkRouter chunk={chunk} style={style} layout={effective} />
+          <Sequence
+            key={chunk.id}
+            from={from}
+            durationInFrames={dur}
+            // Pre-mount ~8 frames early so the DOM and first paint happen
+            // before the chunk is visible. Eliminates main-thread stalls at
+            // the boundary — which otherwise cause Remotion's <Video> to
+            // seek backward to resync, re-playing the caption animation.
+            premountFor={8}
+          >
+            <ChunkRouter
+              chunk={chunk}
+              style={style}
+              layout={effective}
+              animation={animation}
+              preset={preset}
+            />
           </Sequence>
         )
       })}
@@ -71,43 +133,149 @@ export const Captions: React.FC<CaptionsProps> = ({
   )
 }
 
+function resolvePreset<S extends CaptionStyle>(
+  style: S,
+  index: CaptionPresetIndex
+): StylePresetMap[S] {
+  const presets = STYLE_PRESETS[style]
+  const i = Math.max(0, Math.min(presets.length - 1, index[style] ?? 0))
+  return presets[i] as StylePresetMap[S]
+}
+
+type RouterProps<S extends CaptionStyle = CaptionStyle> = {
+  chunk: CaptionChunk
+  style: S
+  layout: CaptionLayout
+  animation: CaptionAnimation
+  preset: StylePresetMap[S]
+}
+
 function ChunkRouter({
   chunk,
   style,
   layout,
-}: {
-  chunk: CaptionChunk
-  style: CaptionStyle
-  layout: CaptionLayout
-}) {
+  animation,
+  preset,
+}: RouterProps) {
   switch (style) {
     case "pop":
-      return <PopStyle chunk={chunk} layout={layout} />
+      return (
+        <PopStyle
+          chunk={chunk}
+          layout={layout}
+          animation={animation}
+          preset={preset as PopPreset}
+        />
+      )
     case "karaoke":
-      return <KaraokeStyle chunk={chunk} layout={layout} />
+      return (
+        <KaraokeStyle
+          chunk={chunk}
+          layout={layout}
+          animation={animation}
+          preset={preset as KaraokePreset}
+        />
+      )
     case "neon":
-      return <NeonStyle chunk={chunk} layout={layout} />
-    case "minimal":
-      return <MinimalStyle chunk={chunk} layout={layout} />
+      return (
+        <NeonStyle
+          chunk={chunk}
+          layout={layout}
+          animation={animation}
+          preset={preset as NeonPreset}
+        />
+      )
     case "impact":
-      return <ImpactStyle chunk={chunk} layout={layout} />
-    case "highlight":
-      return <HighlightStyle chunk={chunk} layout={layout} />
-    case "typewriter":
-      return <TypewriterStyle chunk={chunk} layout={layout} />
-    case "bubble":
-      return <BubbleStyle chunk={chunk} layout={layout} />
+      return (
+        <ImpactStyle
+          chunk={chunk}
+          layout={layout}
+          animation={animation}
+          preset={preset as ImpactPreset}
+        />
+      )
     case "shadow":
-      return <ShadowStyle chunk={chunk} layout={layout} />
+      return (
+        <ShadowStyle
+          chunk={chunk}
+          layout={layout}
+          animation={animation}
+          preset={preset as ShadowPreset}
+        />
+      )
+    case "gradient":
+      return (
+        <GradientStyle
+          chunk={chunk}
+          layout={layout}
+          animation={animation}
+          preset={preset as GradientPreset}
+        />
+      )
+    case "outlined":
+      return (
+        <OutlinedStyle
+          chunk={chunk}
+          layout={layout}
+          animation={animation}
+          preset={preset as OutlinedPreset}
+        />
+      )
     case "clean":
     default:
-      return <CleanStyle chunk={chunk} layout={layout} />
+      return (
+        <CleanStyle
+          chunk={chunk}
+          layout={layout}
+          animation={animation}
+          preset={preset as CleanPreset}
+        />
+      )
   }
 }
 
 function useFontSize(style: CaptionStyle, scale: number) {
   const { height } = useVideoConfig()
   return Math.max(14, Math.round(height * STYLE_BASE_FONT[style] * scale))
+}
+
+/** Chunk entry animation. Returns a wrapper style to merge on the style's
+ *  text block. All animations share a short 4-frame base for snappiness. */
+function useAnimation(kind: CaptionAnimation): {
+  opacity: number
+  transform: string
+} {
+  const frame = useCurrentFrame()
+  const { fps } = useVideoConfig()
+
+  if (kind === "none") return IDLE_ANIM
+
+  if (kind === "fade") {
+    if (frame >= 4) return IDLE_ANIM
+    const t = easeOutCubic(frame / 4)
+    return { opacity: t, transform: "none" }
+  }
+
+  if (kind === "slide") {
+    if (frame >= 6) return IDLE_ANIM
+    const t = easeOutCubic(frame / 6)
+    return {
+      opacity: t,
+      transform: `translateY(${(1 - t) * 18}px)`,
+    }
+  }
+
+  // pop (spring). At these constants the spring is settled well before 24f.
+  if (frame >= 24) return IDLE_ANIM
+  const s = spring({
+    fps,
+    frame,
+    config: { damping: 12, stiffness: 260, mass: 0.5 },
+  })
+  return {
+    opacity: Math.max(0, Math.min(1, s * 1.3)),
+    transform: `scale(${interpolate(s, [0, 1], [0.82, 1])})`,
+  }
 }
 
 function AnchorBox({
@@ -140,9 +308,6 @@ function AnchorBox({
   )
 }
 
-/* A clean stroke built from `-webkit-text-stroke` + a soft drop-shadow — this
- * looks far sharper at any scale than stacked text-shadow outlines, which
- * visibly smear at big sizes. */
 const CLEAN_STROKE = {
   WebkitTextStroke: "1.5px #000",
   paintOrder: "stroke fill" as const,
@@ -155,18 +320,54 @@ const THICK_STROKE = {
   textShadow: "0 4px 10px rgba(0,0,0,0.55)",
 }
 
+type StyleChildProps<P> = {
+  chunk: CaptionChunk
+  layout: CaptionLayout
+  animation: CaptionAnimation
+  preset: P
+}
+
+/**
+ * Compensates for CSS letter-spacing's phantom trailing space so centered text
+ * actually looks centered. For positive letter-spacing the advance box has
+ * empty space on the right; for negative letter-spacing the visible glyphs
+ * overflow past the advance box. Either way, the offset is exactly
+ * |letterSpacing| and is corrected with marginRight: -letterSpacing on an
+ * inline-block wrapper.
+ */
+function TextBox({
+  letterSpacing,
+  children,
+  style,
+}: {
+  letterSpacing: number
+  children: React.ReactNode
+  style?: React.CSSProperties
+}) {
+  return (
+    <span
+      style={{
+        ...style,
+        display: "inline-block",
+        marginRight: -letterSpacing,
+      }}
+    >
+      {children}
+    </span>
+  )
+}
+
 /* ----------------------------- Style: Clean ----------------------------- */
 
 function CleanStyle({
   chunk,
   layout,
-}: {
-  chunk: CaptionChunk
-  layout: CaptionLayout
-}) {
-  const frame = useCurrentFrame()
+  animation,
+  preset,
+}: StyleChildProps<CleanPreset>) {
+  const anim = useAnimation(animation)
   const size = useFontSize("clean", layout.scale)
-  const enter = easeOutCubic(Math.min(1, frame / 5))
+  const letterSpacing = -0.3
   return (
     <AnchorBox layout={layout}>
       <div
@@ -174,15 +375,16 @@ function CleanStyle({
           fontFamily: SANS,
           fontWeight: 700,
           fontSize: size,
-          color: "#ffffff",
-          letterSpacing: -0.3,
-          lineHeight: 1.18,
-          opacity: enter,
-          transform: `translateY(${(1 - enter) * size * 0.14}px)`,
+          color: preset.text,
+          letterSpacing,
+          lineHeight: 1.2,
+          opacity: anim.opacity,
+          transform: anim.transform,
+          willChange: "transform, opacity",
           ...CLEAN_STROKE,
         }}
       >
-        {chunk.text}
+        <TextBox letterSpacing={letterSpacing}>{chunk.text}</TextBox>
       </div>
     </AnchorBox>
   )
@@ -193,13 +395,14 @@ function CleanStyle({
 function PopStyle({
   chunk,
   layout,
-}: {
-  chunk: CaptionChunk
-  layout: CaptionLayout
-}) {
+  animation,
+  preset,
+}: StyleChildProps<PopPreset>) {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
+  const anim = useAnimation(animation)
   const size = useFontSize("pop", layout.scale)
+  const letterSpacing = -0.6
   const rel = frame / fps + chunk.start
   return (
     <AnchorBox layout={layout}>
@@ -209,32 +412,26 @@ function PopStyle({
           flexWrap: "wrap",
           justifyContent: "center",
           alignItems: "center",
-          gap: `${size * 0.14}px`,
+          gap: `${size * 0.18}px`,
           fontFamily: SANS,
           fontWeight: 900,
           fontSize: size,
           textTransform: "uppercase",
-          letterSpacing: -0.5,
+          letterSpacing,
           lineHeight: 1.05,
+          opacity: anim.opacity,
+          transform: anim.transform,
+          willChange: "transform, opacity",
         }}
       >
         {chunk.words.map((w, i) => {
-          const entryF = Math.round((w.start - chunk.start) * fps)
-          const s = spring({
-            fps,
-            frame: frame - entryF,
-            config: { damping: 12, stiffness: 260, mass: 0.5 },
-          })
           const active = rel >= w.start && rel < w.end
           return (
             <span
               key={i}
               style={{
-                display: "inline-block",
-                transform: `scale(${interpolate(s, [0, 1], [0.55, 1])})`,
-                opacity: Math.max(0, Math.min(1, s * 1.2)),
-                color: active ? "#ffe34d" : "#ffffff",
-                transition: "color 70ms linear",
+                color: active ? preset.active : preset.text,
+                marginRight: -letterSpacing,
                 ...THICK_STROKE,
               }}
             >
@@ -252,15 +449,15 @@ function PopStyle({
 function KaraokeStyle({
   chunk,
   layout,
-}: {
-  chunk: CaptionChunk
-  layout: CaptionLayout
-}) {
+  animation,
+  preset,
+}: StyleChildProps<KaraokePreset>) {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
+  const anim = useAnimation(animation)
   const size = useFontSize("karaoke", layout.scale)
+  const letterSpacing = -0.3
   const rel = frame / fps + chunk.start
-  const enter = easeOutCubic(Math.min(1, frame / 5))
   return (
     <AnchorBox layout={layout}>
       <div
@@ -272,30 +469,30 @@ function KaraokeStyle({
           fontFamily: SANS,
           fontWeight: 800,
           fontSize: size,
-          letterSpacing: -0.3,
+          letterSpacing,
           lineHeight: 1.15,
-          opacity: enter,
+          opacity: anim.opacity,
+          transform: anim.transform,
+          willChange: "transform, opacity",
         }}
       >
         {chunk.words.map((w, i) => {
-          const t = interpolate(
-            rel,
-            [w.start, Math.min(w.end, w.start + 0.14)],
-            [0, 1],
-            { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
+          const fillEnd = Math.max(
+            w.start + 0.02,
+            Math.min(w.end, w.start + 0.12)
           )
+          const t = interpolate(rel, [w.start, fillEnd], [0, 1], {
+            extrapolateLeft: "clamp",
+            extrapolateRight: "clamp",
+          })
           const color =
-            t >= 1
-              ? "#ffffff"
-              : t > 0
-                ? "#4ae2d6"
-                : "rgba(255,255,255,0.48)"
+            t >= 1 ? preset.text : t > 0 ? preset.fill : preset.inactive
           return (
             <span
               key={i}
               style={{
                 color,
-                transition: "color 90ms linear",
+                marginRight: -letterSpacing,
                 ...CLEAN_STROKE,
               }}
             >
@@ -313,18 +510,12 @@ function KaraokeStyle({
 function NeonStyle({
   chunk,
   layout,
-}: {
-  chunk: CaptionChunk
-  layout: CaptionLayout
-}) {
-  const frame = useCurrentFrame()
-  const { fps } = useVideoConfig()
+  animation,
+  preset,
+}: StyleChildProps<NeonPreset>) {
+  const anim = useAnimation(animation)
   const size = useFontSize("neon", layout.scale)
-  const s = spring({
-    fps,
-    frame,
-    config: { damping: 14, stiffness: 200, mass: 0.7 },
-  })
+  const letterSpacing = 1.8
   return (
     <AnchorBox layout={layout}>
       <div
@@ -332,54 +523,17 @@ function NeonStyle({
           fontFamily: SANS,
           fontWeight: 700,
           fontSize: size,
-          letterSpacing: 2,
+          letterSpacing,
           lineHeight: 1.15,
           textTransform: "uppercase",
-          color: "#fdf0ff",
-          transform: `scale(${interpolate(s, [0, 1], [0.92, 1])})`,
-          opacity: easeOutCubic(Math.min(1, frame / 4)),
-          textShadow:
-            "0 0 3px #ff4fe0, 0 0 10px #ff2dd4, 0 0 22px #ff2dd4, 0 0 48px rgba(255,45,212,0.65)",
+          color: preset.text,
+          opacity: anim.opacity,
+          transform: anim.transform,
+          willChange: "transform, opacity",
+          textShadow: `0 0 3px ${preset.glow}, 0 0 10px ${preset.glow}, 0 0 22px ${preset.glow}, 0 0 48px ${rgba(preset.glow, 0.55)}`,
         }}
       >
-        {chunk.text}
-      </div>
-    </AnchorBox>
-  )
-}
-
-/* ---------------------------- Style: Minimal ---------------------------- */
-
-function MinimalStyle({
-  chunk,
-  layout,
-}: {
-  chunk: CaptionChunk
-  layout: CaptionLayout
-}) {
-  const frame = useCurrentFrame()
-  const size = useFontSize("minimal", layout.scale)
-  const enter = easeOutCubic(Math.min(1, frame / 4))
-  return (
-    <AnchorBox layout={layout} fullWidth={false}>
-      <div
-        style={{
-          background: "rgba(0,0,0,0.58)",
-          color: "#ffffff",
-          padding: `${size * 0.28}px ${size * 0.68}px`,
-          borderRadius: size * 0.22,
-          fontFamily: SANS,
-          fontWeight: 500,
-          fontSize: size,
-          letterSpacing: 0.15,
-          lineHeight: 1.32,
-          opacity: enter,
-          maxWidth: `${SAFE_ZONE_WIDTH * 100}%`,
-          backdropFilter: "blur(6px)",
-          WebkitBackdropFilter: "blur(6px)",
-        }}
-      >
-        {chunk.text}
+        <TextBox letterSpacing={letterSpacing}>{chunk.text}</TextBox>
       </div>
     </AnchorBox>
   )
@@ -390,19 +544,12 @@ function MinimalStyle({
 function ImpactStyle({
   chunk,
   layout,
-}: {
-  chunk: CaptionChunk
-  layout: CaptionLayout
-}) {
-  const frame = useCurrentFrame()
-  const { fps } = useVideoConfig()
+  animation,
+  preset,
+}: StyleChildProps<ImpactPreset>) {
+  const anim = useAnimation(animation)
   const size = useFontSize("impact", layout.scale)
-  const s = spring({
-    fps,
-    frame,
-    config: { damping: 16, stiffness: 300, mass: 0.45 },
-  })
-  const scale = interpolate(s, [0, 1], [1.08, 1])
+  const letterSpacing = -1.5
   return (
     <AnchorBox layout={layout}>
       <div
@@ -410,202 +557,19 @@ function ImpactStyle({
           fontFamily: SANS,
           fontWeight: 900,
           fontSize: size,
-          letterSpacing: -1.5,
-          lineHeight: 1,
+          letterSpacing,
+          lineHeight: 1.02,
           textTransform: "uppercase",
-          color: "#ffffff",
-          transform: `scale(${scale})`,
-          opacity: Math.max(0, Math.min(1, s * 1.3)),
+          color: preset.text,
+          opacity: anim.opacity,
+          transform: anim.transform,
+          willChange: "transform, opacity",
           WebkitTextStroke: `${Math.max(2, Math.round(size * 0.05))}px #000`,
           paintOrder: "stroke fill",
-          textShadow: "0 6px 16px rgba(0,0,0,0.55)",
+          textShadow: "0 6px 16px rgba(0,0,0,0.5)",
         }}
       >
-        {chunk.text}
-      </div>
-    </AnchorBox>
-  )
-}
-
-/* --------------------------- Style: Highlight --------------------------- */
-
-function HighlightStyle({
-  chunk,
-  layout,
-}: {
-  chunk: CaptionChunk
-  layout: CaptionLayout
-}) {
-  const frame = useCurrentFrame()
-  const { fps } = useVideoConfig()
-  const size = useFontSize("highlight", layout.scale)
-  const rel = frame / fps + chunk.start
-  return (
-    <AnchorBox layout={layout}>
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          justifyContent: "center",
-          gap: `${size * 0.18}px ${size * 0.26}px`,
-          fontFamily: SANS,
-          fontWeight: 800,
-          fontSize: size,
-          lineHeight: 1.25,
-          letterSpacing: -0.2,
-        }}
-      >
-        {chunk.words.map((w, i) => {
-          const wipe = interpolate(
-            rel,
-            [w.start, Math.min(w.end, w.start + 0.12)],
-            [0, 1],
-            { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
-          )
-          const painted = wipe > 0.02
-          return (
-            <span
-              key={i}
-              style={{
-                position: "relative",
-                display: "inline-block",
-                color: painted ? "#0b0b0b" : "#ffffff",
-                padding: `${size * 0.04}px ${size * 0.22}px`,
-                textShadow: painted ? "none" : "0 2px 6px rgba(0,0,0,0.8)",
-                WebkitTextStroke: painted ? "0" : "1px rgba(0,0,0,0.9)",
-                paintOrder: "stroke fill",
-                transition: "color 110ms linear",
-              }}
-            >
-              <span
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  background: "#ffe94d",
-                  transformOrigin: "left center",
-                  transform: `scaleX(${wipe})`,
-                  borderRadius: size * 0.12,
-                  zIndex: -1,
-                  boxShadow: "0 2px 6px rgba(255,213,0,0.25)",
-                }}
-              />
-              {w.word}
-            </span>
-          )
-        })}
-      </div>
-    </AnchorBox>
-  )
-}
-
-/* -------------------------- Style: Typewriter -------------------------- */
-
-function TypewriterStyle({
-  chunk,
-  layout,
-}: {
-  chunk: CaptionChunk
-  layout: CaptionLayout
-}) {
-  const frame = useCurrentFrame()
-  const { fps } = useVideoConfig()
-  const size = useFontSize("typewriter", layout.scale)
-  const totalChars = chunk.text.length
-  const totalFrames = Math.max(
-    1,
-    Math.round((chunk.end - chunk.start) * fps)
-  )
-  const revealFrames = Math.min(
-    Math.max(8, totalFrames - 4),
-    Math.max(10, totalChars * 1.2)
-  )
-  const charsShown = Math.floor(
-    interpolate(frame, [0, revealFrames], [0, totalChars], {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-    })
-  )
-  const cursorOn = Math.floor(frame / 8) % 2 === 0
-  return (
-    <AnchorBox layout={layout} fullWidth={false}>
-      <div
-        style={{
-          fontFamily: MONO,
-          fontWeight: 600,
-          fontSize: size,
-          color: "#ffffff",
-          letterSpacing: 0,
-          lineHeight: 1.35,
-          maxWidth: `${SAFE_ZONE_WIDTH * 100}%`,
-          padding: `${size * 0.22}px ${size * 0.5}px`,
-          background: "rgba(0,0,0,0.55)",
-          borderRadius: size * 0.18,
-          backdropFilter: "blur(6px)",
-          WebkitBackdropFilter: "blur(6px)",
-          whiteSpace: "pre-wrap",
-        }}
-      >
-        {chunk.text.slice(0, charsShown)}
-        <span
-          style={{
-            display: "inline-block",
-            width: Math.max(2, size * 0.08),
-            height: size * 0.95,
-            verticalAlign: "-0.15em",
-            marginLeft: size * 0.08,
-            background: "#ffffff",
-            opacity: cursorOn ? 1 : 0,
-          }}
-        />
-      </div>
-    </AnchorBox>
-  )
-}
-
-/* ----------------------------- Style: Bubble ---------------------------- */
-
-function BubbleStyle({
-  chunk,
-  layout,
-}: {
-  chunk: CaptionChunk
-  layout: CaptionLayout
-}) {
-  const frame = useCurrentFrame()
-  const { fps } = useVideoConfig()
-  const size = useFontSize("bubble", layout.scale)
-  const s = spring({
-    fps,
-    frame,
-    config: { damping: 13, stiffness: 220, mass: 0.55 },
-  })
-  const scale = interpolate(s, [0, 1], [0.88, 1])
-  return (
-    <AnchorBox layout={layout} fullWidth={false}>
-      <div
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background:
-            "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(244,244,246,0.96) 100%)",
-          color: "#111",
-          padding: `${size * 0.34}px ${size * 0.9}px`,
-          borderRadius: size * 1.2,
-          fontFamily: SANS,
-          fontWeight: 700,
-          fontSize: size,
-          letterSpacing: -0.2,
-          lineHeight: 1.25,
-          opacity: easeOutQuint(Math.min(1, s)),
-          transform: `scale(${scale})`,
-          maxWidth: `${SAFE_ZONE_WIDTH * 100}%`,
-          boxShadow:
-            "0 10px 30px rgba(0,0,0,0.32), 0 2px 6px rgba(0,0,0,0.18)",
-        }}
-      >
-        {chunk.text}
+        <TextBox letterSpacing={letterSpacing}>{chunk.text}</TextBox>
       </div>
     </AnchorBox>
   )
@@ -616,20 +580,13 @@ function BubbleStyle({
 function ShadowStyle({
   chunk,
   layout,
-}: {
-  chunk: CaptionChunk
-  layout: CaptionLayout
-}) {
-  const frame = useCurrentFrame()
-  const { fps } = useVideoConfig()
+  animation,
+  preset,
+}: StyleChildProps<ShadowPreset>) {
+  const anim = useAnimation(animation)
   const size = useFontSize("shadow", layout.scale)
-  const s = spring({
-    fps,
-    frame,
-    config: { damping: 16, stiffness: 240, mass: 0.55 },
-  })
-  const slide = interpolate(s, [0, 1], [size * 0.18, 0])
   const offset = Math.max(3, Math.round(size * 0.05))
+  const letterSpacing = -1.2
   return (
     <AnchorBox layout={layout}>
       <div
@@ -637,19 +594,110 @@ function ShadowStyle({
           fontFamily: SANS,
           fontWeight: 900,
           fontSize: size,
-          letterSpacing: -1.2,
+          letterSpacing,
           lineHeight: 1.02,
           textTransform: "uppercase",
-          color: "#ffffff",
-          transform: `translate(${slide}px, ${slide * 0.6}px)`,
-          opacity: easeOutCubic(Math.min(1, frame / 5)),
+          color: preset.text,
+          opacity: anim.opacity,
+          transform: anim.transform,
+          willChange: "transform, opacity",
           WebkitTextStroke: "1.5px #0a0a0a",
           paintOrder: "stroke fill",
-          textShadow: `${offset}px ${offset}px 0 #ff5c79, ${offset * 2 + 2}px ${offset * 2 + 2}px 14px rgba(0,0,0,0.4)`,
+          textShadow: `${offset}px ${offset}px 0 ${preset.shadow}, ${offset * 2 + 2}px ${offset * 2 + 2}px 14px rgba(0,0,0,0.35)`,
         }}
       >
-        {chunk.text}
+        <TextBox letterSpacing={letterSpacing}>{chunk.text}</TextBox>
       </div>
     </AnchorBox>
   )
+}
+
+/* ---------------------------- Style: Gradient --------------------------- */
+
+function GradientStyle({
+  chunk,
+  layout,
+  animation,
+  preset,
+}: StyleChildProps<GradientPreset>) {
+  const anim = useAnimation(animation)
+  const size = useFontSize("gradient", layout.scale)
+  const letterSpacing = -1
+  const stops =
+    preset.colors.length > 1
+      ? preset.colors.join(", ")
+      : `${preset.colors[0]}, ${preset.colors[0]}`
+  return (
+    <AnchorBox layout={layout}>
+      <div
+        style={{
+          fontFamily: SANS,
+          fontWeight: 900,
+          fontSize: size,
+          letterSpacing,
+          lineHeight: 1.05,
+          textTransform: "uppercase",
+          color: "transparent",
+          backgroundImage: `linear-gradient(135deg, ${stops})`,
+          WebkitBackgroundClip: "text",
+          backgroundClip: "text",
+          opacity: anim.opacity,
+          transform: anim.transform,
+          willChange: "transform, opacity",
+          filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.55))",
+        }}
+      >
+        <TextBox letterSpacing={letterSpacing}>{chunk.text}</TextBox>
+      </div>
+    </AnchorBox>
+  )
+}
+
+/* ---------------------------- Style: Outlined --------------------------- */
+
+function OutlinedStyle({
+  chunk,
+  layout,
+  animation,
+  preset,
+}: StyleChildProps<OutlinedPreset>) {
+  const anim = useAnimation(animation)
+  const size = useFontSize("outlined", layout.scale)
+  const stroke = Math.max(2, Math.round(size * 0.04))
+  const letterSpacing = -1
+  return (
+    <AnchorBox layout={layout}>
+      <div
+        style={{
+          fontFamily: SANS,
+          fontWeight: 900,
+          fontSize: size,
+          letterSpacing,
+          lineHeight: 1.02,
+          textTransform: "uppercase",
+          color: "transparent",
+          WebkitTextStroke: `${stroke}px ${preset.stroke}`,
+          paintOrder: "stroke fill",
+          opacity: anim.opacity,
+          transform: anim.transform,
+          willChange: "transform, opacity",
+          filter: "drop-shadow(0 3px 8px rgba(0,0,0,0.75))",
+        }}
+      >
+        <TextBox letterSpacing={letterSpacing}>{chunk.text}</TextBox>
+      </div>
+    </AnchorBox>
+  )
+}
+
+/** Converts a hex color to rgba with a given alpha. Falls back to the input
+ *  color string if it isn't a #rrggbb hex. */
+function rgba(color: string, alpha: number) {
+  const hex = color.replace("#", "")
+  if (hex.length !== 6) return color
+  const r = parseInt(hex.slice(0, 2), 16)
+  const g = parseInt(hex.slice(2, 4), 16)
+  const b = parseInt(hex.slice(4, 6), 16)
+  if ([r, g, b].some((n) => Number.isNaN(n))) return color
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }

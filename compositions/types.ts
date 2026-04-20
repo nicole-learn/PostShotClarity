@@ -19,6 +19,7 @@ export type VerticalClipProps = {
     /** Webcam placement in normalized output coords. */
     placement: Rect
     radius: number
+    shape: "rect" | "circle"
   }
   background: string
   durationInFrames?: number

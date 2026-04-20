@@ -14,6 +14,7 @@ type Props = {
     source: Rect
     placement: Rect
     radius: number
+    shape: "rect" | "circle"
   }
   background: string
   /** Left-side source video. We draw straight from its decoded frames. */
@@ -140,8 +141,22 @@ export function VerticalPreview({
           const wdy = py + (ph - wdh) / 2
 
           ctx.save()
-          const radius = Math.max(0, Math.min(pw, ph, webcam.radius))
-          roundRectPath(ctx, px, py, pw, ph, radius)
+          if (webcam.shape === "circle") {
+            ctx.beginPath()
+            ctx.ellipse(
+              px + pw / 2,
+              py + ph / 2,
+              pw / 2,
+              ph / 2,
+              0,
+              0,
+              Math.PI * 2
+            )
+            ctx.closePath()
+          } else {
+            const radius = Math.max(0, Math.min(pw, ph, webcam.radius))
+            roundRectPath(ctx, px, py, pw, ph, radius)
+          }
           ctx.clip()
           try {
             ctx.drawImage(videoEl, wsx, wsy, wsw, wsh, wdx, wdy, wdw, wdh)

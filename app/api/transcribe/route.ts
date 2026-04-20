@@ -2,19 +2,25 @@ import { NextRequest, NextResponse } from "next/server"
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
 } from "@aws-sdk/client-s3"
 import OpenAI, { toFile } from "openai"
 
 import { bucketName, s3 } from "@/lib/remotion-lambda"
+import { enforce, transcribeLimiter } from "@/lib/ratelimit"
+import { transcribeBody } from "@/lib/validation"
 
 export const runtime = "nodejs"
 export const maxDuration = 120
 
-type Body = {
-  key?: string
-}
+// OpenAI Whisper accepts <=25MB uploads; refuse anything obviously larger
+// before we spend time streaming it out of S3.
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 export async function POST(req: NextRequest) {
+  const limited = await enforce(req, transcribeLimiter, "transcribe")
+  if (limited) return limited
+
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
     return NextResponse.json(
@@ -23,15 +29,26 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const body = (await req.json().catch(() => null)) as Body | null
-  if (!body || typeof body.key !== "string") {
-    return NextResponse.json({ error: "Missing audio key" }, { status: 400 })
+  const raw = (await req.json().catch(() => null)) as unknown
+  const parsed = transcribeBody.safeParse(raw)
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid body" }, { status: 400 })
   }
+  const key = parsed.data.key
 
-  const key = body.key
   const openai = new OpenAI({ apiKey })
 
   try {
+    const head = await s3
+      .send(new HeadObjectCommand({ Bucket: bucketName, Key: key }))
+      .catch(() => null)
+    if (!head) {
+      return NextResponse.json({ error: "Audio not found" }, { status: 404 })
+    }
+    if (head.ContentLength && head.ContentLength > MAX_AUDIO_BYTES) {
+      return NextResponse.json({ error: "Audio too large" }, { status: 413 })
+    }
+
     const obj = await s3.send(
       new GetObjectCommand({ Bucket: bucketName, Key: key })
     )

@@ -12,6 +12,7 @@ import { Captions } from "./captions/Captions"
 import {
   DEFAULT_CAPTION_FPS,
   DEFAULT_CAPTION_LAYOUT,
+  DEFAULT_PRESET_INDEX,
   type CaptionsProps,
 } from "./captions/types"
 
@@ -35,6 +36,7 @@ export const RemotionRoot: React.FC = () => {
             source: { x: 0.02, y: 0.65, width: 0.22, height: 0.33 },
             placement: { x: 0.04, y: 0.72, width: 0.32, height: 0.26 },
             radius: 24,
+            shape: "rect" as const,
           },
           background: "#000000",
           useOffthread: true,
@@ -80,6 +82,8 @@ export const RemotionRoot: React.FC = () => {
           lines: [],
           style: "clean" as const,
           layout: DEFAULT_CAPTION_LAYOUT,
+          animation: "fade" as const,
+          presetIndex: DEFAULT_PRESET_INDEX,
           useOffthread: true,
           durationInFrames: DEFAULT_CAPTION_FPS,
           fps: DEFAULT_CAPTION_FPS,

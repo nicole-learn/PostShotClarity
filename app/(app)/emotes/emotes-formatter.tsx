@@ -136,8 +136,7 @@ export function EmotesFormatter() {
           onFile={handleFile}
           accept="image/*"
           icon={ImageUpload01Icon}
-          label="Drop an image to format"
-          hint="PNG or JPG · best with a transparent background"
+          label="Drop an image"
         />
       </div>
     )

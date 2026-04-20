@@ -4,9 +4,11 @@ import * as React from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   CameraVideoIcon,
+  CircleIcon,
   Download01Icon,
   Grid02Icon,
   Refresh01Icon,
+  SquareIcon,
   VideoReplayIcon,
 } from "@hugeicons/core-free-icons"
 
@@ -20,9 +22,16 @@ import { StagedProgress } from "@/components/staged-progress"
 import { useToast } from "@/components/toast"
 import { pushRecent } from "@/lib/recent"
 import { cn } from "@/lib/utils"
-import { OUTPUT_ASPECT, OUTPUT_WIDTH, OUTPUT_HEIGHT, type Rect } from "@/compositions/types"
+import {
+  OUTPUT_ASPECT,
+  OUTPUT_WIDTH,
+  OUTPUT_HEIGHT,
+  type Rect,
+} from "@/compositions/types"
 
 const FPS = 30
+
+type WebcamShape = "rect" | "circle"
 
 type VideoMeta = {
   file: File
@@ -51,6 +60,21 @@ function loadVideo(file: File): Promise<VideoMeta> {
   })
 }
 
+function clamp(v: number, lo: number, hi: number) {
+  return Math.min(hi, Math.max(lo, v))
+}
+
+function clampRect(r: Rect): Rect {
+  const width = clamp(r.width, 0.05, 1)
+  const height = clamp(r.height, 0.05, 1)
+  return {
+    width,
+    height,
+    x: clamp(r.x, 0, 1 - width),
+    y: clamp(r.y, 0, 1 - height),
+  }
+}
+
 function defaultMainCrop(sourceAspect: number): Rect {
   const ratio = sourceAspect / OUTPUT_ASPECT
   const width = Math.min(1, 1 / ratio)
@@ -67,11 +91,12 @@ function webcamPixelAspect(source: Rect, meta: VideoMeta) {
   return (source.width * meta.width) / Math.max(1, source.height * meta.height)
 }
 
-function placementAspectLock(source: Rect, meta: VideoMeta) {
-  return webcamPixelAspect(source, meta)
-}
-
-function syncPlacementAspect(placement: Rect, source: Rect, meta: VideoMeta): Rect {
+// Sync placement so its pixel-space aspect matches the webcam source crop.
+function syncPlacementAspect(
+  placement: Rect,
+  source: Rect,
+  meta: VideoMeta
+): Rect {
   const targetAspect = webcamPixelAspect(source, meta)
   const newHeight = Math.min(
     1,
@@ -81,12 +106,44 @@ function syncPlacementAspect(placement: Rect, source: Rect, meta: VideoMeta): Re
     newHeight === 1
       ? Math.min(1, targetAspect / (OUTPUT_WIDTH / OUTPUT_HEIGHT))
       : placement.width
-  return {
+  return clampRect({
     width: newWidth,
     height: newHeight,
-    x: Math.min(Math.max(placement.x, 0), 1 - newWidth),
-    y: Math.min(Math.max(placement.y, 0), 1 - newHeight),
+    x: placement.x,
+    y: placement.y,
+  })
+}
+
+// Return a rect that is pixel-square inside a container of size (cw × ch),
+// preserving the rect's centroid. In normalized coords: width*cw == height*ch.
+function snapToPixelSquare(rect: Rect, cw: number, ch: number): Rect {
+  const containerAspect = cw / ch
+  let width = rect.width
+  let height = width * containerAspect
+  if (height > 1) {
+    height = 1
+    width = height / containerAspect
   }
+  if (width > 1) {
+    width = 1
+    height = width * containerAspect
+  }
+  const cx = rect.x + rect.width / 2
+  const cy = rect.y + rect.height / 2
+  return clampRect({
+    width,
+    height,
+    x: cx - width / 2,
+    y: cy - height / 2,
+  })
+}
+
+function snapSourceToSquare(source: Rect, meta: VideoMeta): Rect {
+  return snapToPixelSquare(source, meta.width, meta.height)
+}
+
+function snapPlacementToSquare(placement: Rect): Rect {
+  return snapToPixelSquare(placement, OUTPUT_WIDTH, OUTPUT_HEIGHT)
 }
 
 export function VerticalEditor() {
@@ -99,6 +156,7 @@ export function VerticalEditor() {
     height: 1,
   })
   const [webcamEnabled, setWebcamEnabled] = React.useState(false)
+  const [webcamShape, setWebcamShape] = React.useState<WebcamShape>("rect")
   const [showThirds, setShowThirds] = React.useState(false)
   const [webcamSource, setWebcamSource] = React.useState<Rect>({
     x: 0.02,
@@ -127,14 +185,19 @@ export function VerticalEditor() {
     []
   )
 
-  const sourceAspect = video ? video.width / video.height : 16 / 9
-
   const handleUpload = async (file: File) => {
     try {
       const meta = await loadVideo(file)
       setVideo(meta)
       setMainCrop(defaultMainCrop(meta.width / meta.height))
-      setWebcamPlacement((p) => syncPlacementAspect(p, webcamSource, meta))
+      setWebcamSource((s) =>
+        webcamShape === "circle" ? snapSourceToSquare(s, meta) : s
+      )
+      setWebcamPlacement((p) =>
+        webcamShape === "circle"
+          ? snapPlacementToSquare(p)
+          : syncPlacementAspect(p, webcamSource, meta)
+      )
       pushRecent({ tool: "vertical", name: file.name, size: file.size })
     } catch {
       push({ message: "That clip couldn't be read", variant: "error" })
@@ -153,15 +216,24 @@ export function VerticalEditor() {
     ? Math.max(1, Math.floor(video.duration * FPS))
     : FPS
 
-  const webcamLockAspect = video
-    ? placementAspectLock(webcamSource, video)
+  // Aspect locks passed to RectOverlay. Both rects are 1:1 in pixels when
+  // shape === "circle" so the circular mask doesn't distort the source.
+  const webcamSourceLock = webcamShape === "circle" ? 1 : undefined
+  const webcamPlacementLock = video
+    ? webcamShape === "circle"
+      ? 1
+      : webcamPixelAspect(webcamSource, video)
     : undefined
 
   const onWebcamSourceChange = (next: Rect) => {
     setWebcamSource(next)
-    if (video) {
-      setWebcamPlacement((p) => syncPlacementAspect(p, next, video))
+    if (!video) return
+    if (webcamShape === "circle") {
+      // Overlay already enforces 1:1 via aspectLock, placement stays square.
+      setWebcamPlacement((p) => snapPlacementToSquare(p))
+      return
     }
+    setWebcamPlacement((p) => syncPlacementAspect(p, next, video))
   }
 
   const onWebcamPlacementChange = (next: Rect) => {
@@ -169,7 +241,23 @@ export function VerticalEditor() {
       setWebcamPlacement(next)
       return
     }
+    if (webcamShape === "circle") {
+      setWebcamPlacement(next)
+      return
+    }
     setWebcamPlacement(syncPlacementAspect(next, webcamSource, video))
+  }
+
+  const onShapeChange = (next: WebcamShape) => {
+    setWebcamShape(next)
+    if (!video) return
+    if (next === "circle") {
+      const nextSource = snapSourceToSquare(webcamSource, video)
+      setWebcamSource(nextSource)
+      setWebcamPlacement((p) => snapPlacementToSquare(p))
+    } else {
+      setWebcamPlacement((p) => syncPlacementAspect(p, webcamSource, video))
+    }
   }
 
   const handleExport = async () => {
@@ -217,6 +305,7 @@ export function VerticalEditor() {
               source: webcamSource,
               placement: webcamPlacement,
               radius: 24,
+              shape: webcamShape,
             },
             background: "#000000",
             durationInFrames,
@@ -293,8 +382,7 @@ export function VerticalEditor() {
           onFile={handleUpload}
           accept="video/*"
           icon={VideoReplayIcon}
-          label="Drop a horizontal clip to reframe"
-          hint="MP4 · 16:9 or wider works best"
+          label="Drop a video"
         />
       </div>
     )
@@ -302,111 +390,109 @@ export function VerticalEditor() {
 
   return (
     <div className="flex h-full flex-col gap-4 p-4 md:grid md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] md:grid-rows-[1fr_auto] md:gap-6 md:p-6">
-      <section className="flex min-h-0 flex-col gap-3">
-        <div className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-black">
-          <FitBox aspect={video.width / video.height}>
-            <video
-              ref={sourceVideoRef}
-              src={video.url}
-              className="absolute inset-0 h-full w-full"
-              muted
-              loop
-              playsInline
-              autoPlay
-            />
+      <section className="min-h-0 overflow-hidden rounded-xl border bg-black">
+        <FitBox aspect={video.width / video.height}>
+          <video
+            ref={sourceVideoRef}
+            src={video.url}
+            className="absolute inset-0 h-full w-full"
+            muted
+            loop
+            playsInline
+            autoPlay
+          />
+          <RectOverlay
+            rect={mainCrop}
+            onChange={setMainCrop}
+            aspectLock={OUTPUT_ASPECT}
+            accent="primary"
+            label="Frame"
+          />
+          {webcamEnabled && (
             <RectOverlay
-              rect={mainCrop}
-              onChange={setMainCrop}
-              aspectLock={OUTPUT_ASPECT}
-              accent="primary"
-              label="Frame"
-            />
-            {webcamEnabled && (
-              <RectOverlay
-                rect={webcamSource}
-                onChange={onWebcamSourceChange}
-                accent="accent"
-                label="Webcam"
-              />
-            )}
-          </FitBox>
-        </div>
-        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span className="truncate tnum">
-            {video.file.name} · {video.width}×{video.height} ·{" "}
-            {video.duration.toFixed(1)}s · {sourceAspect.toFixed(2)}:1
-          </span>
-          <Button variant="ghost" size="sm" onClick={reset}>
-            <HugeiconsIcon icon={Refresh01Icon} />
-            Replace
-          </Button>
-        </div>
-      </section>
-
-      <section className="flex min-h-0 flex-col gap-3">
-        <div className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-black">
-          <FitBox aspect={OUTPUT_ASPECT}>
-            <VerticalPreview
-              videoUrl={video.url}
-              sourceWidth={video.width}
-              sourceHeight={video.height}
-              mainCrop={mainCrop}
-              webcam={{
-                enabled: webcamEnabled,
-                source: webcamSource,
-                placement: webcamPlacement,
-                radius: 24,
-              }}
-              background="#000000"
-              sharedSrcRef={sourceVideoRef}
-            />
-            {showThirds && <ThirdsOverlay />}
-            {webcamEnabled && (
-              <RectOverlay
-                rect={webcamPlacement}
-                onChange={onWebcamPlacementChange}
-                aspectLock={webcamLockAspect}
-                accent="accent"
-                label="Place"
-              />
-            )}
-          </FitBox>
-        </div>
-        <div className="flex items-center justify-between text-[11px] text-muted-foreground tnum">
-          <span>1080 × 1920 · 9:16</span>
-          <span>Live · synced</span>
-        </div>
-      </section>
-
-      <section className="col-span-full flex flex-wrap items-center justify-between gap-3 border-t pt-3 md:border-0 md:pt-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <IconToggle
-            active={showThirds}
-            onClick={() => setShowThirds((v) => !v)}
-            icon={Grid02Icon}
-            label={showThirds ? "Thirds on" : "Thirds"}
-          />
-          <IconToggle
-            active={webcamEnabled}
-            onClick={() => setWebcamEnabled((v) => !v)}
-            icon={CameraVideoIcon}
-            label={webcamEnabled ? "Webcam on" : "Webcam"}
-          />
-        </div>
-        <div className="flex items-center gap-3">
-          {exporting && (
-            <StagedProgress
-              stages={stages}
-              currentIndex={stageIndex}
-              progressInStage={stageProgress}
-              className="w-48"
+              rect={webcamSource}
+              onChange={onWebcamSourceChange}
+              aspectLock={webcamSourceLock}
+              accent="accent"
+              label="Webcam"
             />
           )}
-          <Button size="lg" onClick={handleExport} disabled={exporting}>
-            <HugeiconsIcon icon={Download01Icon} />
-            {exporting ? "Rendering…" : "Export MP4"}
-          </Button>
-        </div>
+        </FitBox>
+      </section>
+
+      <section className="min-h-0 overflow-hidden rounded-xl border bg-black">
+        <FitBox aspect={OUTPUT_ASPECT}>
+          <VerticalPreview
+            videoUrl={video.url}
+            sourceWidth={video.width}
+            sourceHeight={video.height}
+            mainCrop={mainCrop}
+            webcam={{
+              enabled: webcamEnabled,
+              source: webcamSource,
+              placement: webcamPlacement,
+              radius: 24,
+              shape: webcamShape,
+            }}
+            background="#000000"
+            sharedSrcRef={sourceVideoRef}
+          />
+          {showThirds && <ThirdsOverlay />}
+          {webcamEnabled && (
+            <RectOverlay
+              rect={webcamPlacement}
+              onChange={onWebcamPlacementChange}
+              aspectLock={webcamPlacementLock}
+              accent="accent"
+              label="Place"
+            />
+          )}
+        </FitBox>
+      </section>
+
+      <section className="col-span-full flex items-center gap-2 border-t pt-3 md:border-0 md:pt-0">
+        <IconToggle
+          active={showThirds}
+          onClick={() => setShowThirds((v) => !v)}
+          icon={Grid02Icon}
+          label="Thirds"
+        />
+        <IconToggle
+          active={webcamEnabled}
+          onClick={() => setWebcamEnabled((v) => !v)}
+          icon={CameraVideoIcon}
+          label="Webcam"
+        />
+        {webcamEnabled && (
+          <>
+            <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+            <SegmentedShape value={webcamShape} onChange={onShapeChange} />
+          </>
+        )}
+        <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+        <IconToggle
+          active={false}
+          onClick={reset}
+          icon={Refresh01Icon}
+          label="Replace"
+        />
+        {exporting && (
+          <StagedProgress
+            stages={stages}
+            currentIndex={stageIndex}
+            progressInStage={stageProgress}
+            className="ml-auto w-48"
+          />
+        )}
+        <Button
+          size="lg"
+          onClick={handleExport}
+          disabled={exporting}
+          className={exporting ? "" : "ml-auto"}
+        >
+          <HugeiconsIcon icon={Download01Icon} />
+          {exporting ? "Rendering…" : "Export MP4"}
+        </Button>
       </section>
     </div>
   )
@@ -433,6 +519,65 @@ function IconToggle({
         active
           ? "border-foreground/20 bg-foreground text-background"
           : "border-border bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
+      )}
+    >
+      <HugeiconsIcon icon={icon} size={13} strokeWidth={1.75} />
+      {label}
+    </button>
+  )
+}
+
+function SegmentedShape({
+  value,
+  onChange,
+}: {
+  value: WebcamShape
+  onChange: (v: WebcamShape) => void
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Webcam shape"
+      className="inline-flex h-9 items-center rounded-md border border-border bg-background p-0.5"
+    >
+      <ShapeButton
+        icon={SquareIcon}
+        label="Rect"
+        active={value === "rect"}
+        onClick={() => onChange("rect")}
+      />
+      <ShapeButton
+        icon={CircleIcon}
+        label="Circle"
+        active={value === "circle"}
+        onClick={() => onChange("circle")}
+      />
+    </div>
+  )
+}
+
+function ShapeButton({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: typeof Grid02Icon
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      onClick={onClick}
+      className={cn(
+        "flex h-8 items-center gap-1.5 rounded-[5px] px-2 text-[11px] font-medium transition-colors",
+        active
+          ? "bg-foreground text-background"
+          : "text-muted-foreground hover:bg-muted hover:text-foreground"
       )}
     >
       <HugeiconsIcon icon={icon} size={13} strokeWidth={1.75} />

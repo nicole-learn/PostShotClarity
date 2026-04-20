@@ -4,19 +4,19 @@ import * as React from "react"
 import { Player, type PlayerRef } from "@remotion/player"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  ClosedCaptionIcon,
   Download01Icon,
-  PauseIcon,
-  PlayIcon,
+  DragDropVerticalIcon,
   Refresh01Icon,
   Delete02Icon,
   PlusSignIcon,
+  VideoReplayIcon,
 } from "@hugeicons/core-free-icons"
 
 import { Button } from "@/components/ui/button"
 import { Dropzone } from "@/components/dropzone"
 import { CaptionAnchorOverlay } from "@/components/caption-anchor-overlay"
 import { StagedProgress } from "@/components/staged-progress"
+import { VideoScrubber } from "@/components/video-scrubber"
 import { useToast } from "@/components/toast"
 import { pushRecent } from "@/lib/recent"
 import { getFFmpeg } from "@/lib/ffmpeg"
@@ -26,14 +26,19 @@ import { Captions } from "@/compositions/captions/Captions"
 import {
   DEFAULT_CAPTION_FPS,
   DEFAULT_CAPTION_LAYOUT,
+  DEFAULT_PRESET_INDEX,
+  type CaptionAnimation,
   type CaptionLayout,
   type CaptionLine,
+  type CaptionPresetIndex,
   type CaptionStyle,
   type CaptionsProps,
   type TranscribedWord,
 } from "@/compositions/captions/types"
 
 import { StylePicker } from "./style-picker"
+import { AnimationPicker } from "./animation-picker"
+import { ColorPicker } from "./color-picker"
 import { groupWordsIntoLines } from "./group-words"
 
 type TranscribeResponse = {
@@ -59,6 +64,18 @@ function formatTime(t: number) {
     .padStart(2, "0")
   const ms = Math.floor((t - Math.floor(t)) * 10)
   return `${m}:${s}.${ms}`
+}
+
+// Parse "m:ss.d", "mm:ss", or plain seconds ("12.3") into a number of seconds.
+function parseTime(str: string): number | null {
+  const s = str.trim()
+  if (!s) return null
+  const m = s.match(/^(?:(\d+):)?(\d+)(?:\.(\d+))?$/)
+  if (!m) return null
+  const mins = m[1] ? parseInt(m[1], 10) : 0
+  const secs = parseInt(m[2], 10)
+  const frac = m[3] ? parseFloat(`0.${m[3]}`) : 0
+  return mins * 60 + secs + frac
 }
 
 async function presign(
@@ -110,6 +127,10 @@ export function CaptionsGenerator() {
   const [layout, setLayout] = React.useState<CaptionLayout>(
     DEFAULT_CAPTION_LAYOUT
   )
+  const [animation, setAnimation] =
+    React.useState<CaptionAnimation>("fade")
+  const [presetIndex, setPresetIndex] =
+    React.useState<CaptionPresetIndex>(DEFAULT_PRESET_INDEX)
   const [ffmpegReady, setFfmpegReady] = React.useState(false)
   const [transcribing, setTranscribing] = React.useState(false)
   const [exporting, setExporting] = React.useState(false)
@@ -120,6 +141,7 @@ export function CaptionsGenerator() {
     { label: "Transcribing", weight: 2 },
   ])
   const [playing, setPlaying] = React.useState(false)
+  const [currentFrame, setCurrentFrame] = React.useState(0)
   const [outputUrl, setOutputUrl] = React.useState<string | null>(null)
   const playerRef = React.useRef<PlayerRef>(null)
   const probeRef = React.useRef<HTMLVideoElement>(null)
@@ -147,6 +169,7 @@ export function CaptionsGenerator() {
     setStageIndex(0)
     setStageProgress(0)
     setPlaying(false)
+    setCurrentFrame(0)
     setOutputUrl(null)
   }, [])
 
@@ -160,6 +183,7 @@ export function CaptionsGenerator() {
       setLines([])
       setStageProgress(0)
       setPlaying(false)
+      setCurrentFrame(0)
       setOutputUrl(null)
       pushRecent({ tool: "captions", name: f.name, size: f.size })
       warmupFFmpeg()
@@ -301,6 +325,8 @@ export function CaptionsGenerator() {
             lines,
             style,
             layout,
+            animation,
+            presetIndex,
             fps: DEFAULT_CAPTION_FPS,
             durationInFrames,
             width: videoWidth,
@@ -363,11 +389,53 @@ export function CaptionsGenerator() {
     } finally {
       setExporting(false)
     }
-  }, [file, layout, lines, push, style, videoDuration, videoHeight, videoWidth])
+  }, [
+    animation,
+    file,
+    layout,
+    lines,
+    presetIndex,
+    push,
+    style,
+    videoDuration,
+    videoHeight,
+    videoWidth,
+  ])
 
   const updateLineText = (id: string, text: string) => {
     setLines((prev) => prev.map((l) => (l.id === id ? { ...l, text } : l)))
   }
+
+  const updateLineTiming = (
+    id: string,
+    patch: { start?: number; end?: number }
+  ) => {
+    setLines((prev) =>
+      prev.map((l) => {
+        if (l.id !== id) return l
+        const nextStart = patch.start ?? l.start
+        const nextEnd = patch.end ?? l.end
+        return { ...l, start: nextStart, end: nextEnd }
+      })
+    )
+  }
+
+  const moveLine = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0) return
+    setLines((prev) => {
+      if (from >= prev.length) return prev
+      const next = prev.slice()
+      const [moved] = next.splice(from, 1)
+      // Matches the drop indicator: dragging down puts the row *below* the
+      // target (target's post-removal index + 1 = to), dragging up puts it
+      // *above* the target (target's index = to). Both are splice(to).
+      next.splice(to, 0, moved)
+      return next
+    })
+  }
+
+  const [dragIndex, setDragIndex] = React.useState<number | null>(null)
+  const [dropIndex, setDropIndex] = React.useState<number | null>(null)
 
   const deleteLine = (id: string) => {
     setLines((prev) => prev.filter((l) => l.id !== id))
@@ -402,18 +470,38 @@ export function CaptionsGenerator() {
     else ref.play()
   }
 
+  // videoWidth/videoHeight flip to nonzero when the probe finishes; that's
+  // what gates the Player from mounting, so we wait on them here to make
+  // sure playerRef.current is populated before attaching listeners.
   React.useEffect(() => {
+    if (!videoUrl || videoWidth === 0 || videoHeight === 0) return
     const ref = playerRef.current
     if (!ref) return
     const onPlay = () => setPlaying(true)
     const onPause = () => setPlaying(false)
+    const onFrame = (e: { detail: { frame: number } }) => {
+      setCurrentFrame(e.detail.frame)
+    }
+    const onSeeked = (e: { detail: { frame: number } }) => {
+      setCurrentFrame(e.detail.frame)
+    }
+    const onEnded = () => setPlaying(false)
     ref.addEventListener("play", onPlay)
     ref.addEventListener("pause", onPause)
+    ref.addEventListener("ended", onEnded)
+    ref.addEventListener("frameupdate", onFrame)
+    ref.addEventListener("seeked", onSeeked)
+    // Sync once immediately in case the player already advanced before we hooked up.
+    setCurrentFrame(ref.getCurrentFrame())
+    setPlaying(ref.isPlaying())
     return () => {
       ref.removeEventListener("play", onPlay)
       ref.removeEventListener("pause", onPause)
+      ref.removeEventListener("ended", onEnded)
+      ref.removeEventListener("frameupdate", onFrame)
+      ref.removeEventListener("seeked", onSeeked)
     }
-  }, [videoUrl])
+  }, [videoUrl, videoWidth, videoHeight])
 
   if (!file || !videoUrl) {
     return (
@@ -425,9 +513,8 @@ export function CaptionsGenerator() {
         <Dropzone
           onFile={loadFile}
           accept="video/*"
-          icon={ClosedCaptionIcon}
-          label="Drop a video clip to caption"
-          hint="MP4 or WebM · speech will be transcribed automatically"
+          icon={VideoReplayIcon}
+          label="Drop a video"
         />
       </div>
     )
@@ -437,8 +524,19 @@ export function CaptionsGenerator() {
     30,
     Math.ceil((videoDuration || 1) * PREVIEW_FPS)
   )
-  const compositionWidth = videoWidth || 1280
-  const compositionHeight = videoHeight || 720
+  // Cap the preview composition at 720p short-edge. The composition is CSS-scaled
+  // to fill the preview box anyway, and rasterizing captions (text-shadow, stroke,
+  // backdrop-filter, drop-shadow) at native 1080p/4K is the main source of
+  // scrub/playback stutter. Lambda render uses the untouched native size.
+  const PREVIEW_MAX_SHORT_EDGE = 720
+  const rawW = videoWidth || 1280
+  const rawH = videoHeight || 720
+  const previewScale = Math.min(
+    1,
+    PREVIEW_MAX_SHORT_EDGE / Math.max(1, Math.min(rawW, rawH))
+  )
+  const compositionWidth = Math.max(2, Math.round((rawW * previewScale) / 2) * 2)
+  const compositionHeight = Math.max(2, Math.round((rawH * previewScale) / 2) * 2)
   const probeReady = videoWidth > 0 && videoHeight > 0
   const hasLines = lines.length > 0
 
@@ -447,10 +545,12 @@ export function CaptionsGenerator() {
     lines,
     style,
     layout,
+    animation,
+    presetIndex,
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 p-4 md:grid md:grid-cols-[160px_1fr_340px] md:grid-rows-[1fr_auto] md:gap-4 md:p-5">
+    <div className="flex h-full flex-col gap-4 p-4 md:grid md:grid-cols-[150px_170px_1fr_320px] md:grid-rows-[1fr_auto] md:gap-4 md:p-5">
       <video
         ref={probeRef}
         src={videoUrl}
@@ -459,8 +559,8 @@ export function CaptionsGenerator() {
         className="hidden"
       />
 
-      <aside className="flex min-h-0 flex-col gap-2 md:row-span-2">
-        <div className="font-mono text-[9px] tracking-widest text-muted-foreground uppercase">
+      <aside className="flex min-h-0 flex-col gap-2 md:col-start-1 md:row-start-1">
+        <div className="flex h-6 items-center font-mono text-[9px] tracking-widest text-muted-foreground uppercase">
           Style
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
@@ -468,7 +568,65 @@ export function CaptionsGenerator() {
         </div>
       </aside>
 
-      <section className="flex min-h-0 flex-col gap-3 md:row-span-2">
+      <aside className="flex min-h-0 flex-col gap-2 md:col-start-2 md:row-start-1">
+        <div className="flex flex-col gap-2">
+          <div className="flex h-6 items-center font-mono text-[9px] tracking-widest text-muted-foreground uppercase">
+            Animation
+          </div>
+          <AnimationPicker value={animation} onChange={setAnimation} />
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-2 border-t pt-4">
+          <div className="font-mono text-[9px] tracking-widest text-muted-foreground uppercase">
+            Color
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            <ColorPicker
+              style={style}
+              value={presetIndex[style] ?? 0}
+              onChange={(i) =>
+                setPresetIndex((prev) => ({ ...prev, [style]: i }))
+              }
+            />
+          </div>
+        </div>
+      </aside>
+
+      <div className="md:col-start-1 md:col-span-2 md:row-start-2">
+        <CharsPerLineSlider
+          value={layout.maxCharsPerLine}
+          onChange={(n) => setLayout((l) => ({ ...l, maxCharsPerLine: n }))}
+        />
+      </div>
+
+      <section className="flex min-h-0 flex-col gap-2 md:col-start-3 md:row-span-2">
+        <div className="flex h-6 items-center justify-between gap-2">
+          <div className="truncate text-xs text-muted-foreground">
+            {file.name}
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => void transcribeFromFile()}
+              disabled={busy || !probeReady}
+              aria-label="Retranscribe"
+              title="Retranscribe"
+            >
+              <HugeiconsIcon icon={Refresh01Icon} />
+            </Button>
+            <Button variant="ghost" size="xs" onClick={reset} disabled={busy}>
+              Replace
+            </Button>
+            <Button
+              size="xs"
+              onClick={() => void exportVideo()}
+              disabled={busy || !hasLines || !probeReady}
+            >
+              <HugeiconsIcon icon={Download01Icon} />
+              {exporting ? "Rendering…" : "Download with captions"}
+            </Button>
+          </div>
+        </div>
         <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-xl border bg-black">
           <div
             className="relative max-h-full max-w-full"
@@ -500,14 +658,15 @@ export function CaptionsGenerator() {
               <CaptionAnchorOverlay layout={layout} onChange={setLayout} />
             )}
             {probeReady && !busy && (
-              <button
-                type="button"
-                onClick={togglePlay}
-                aria-label={playing ? "Pause" : "Play"}
-                className="absolute right-3 bottom-3 z-10 flex size-10 items-center justify-center rounded-full bg-background/90 text-foreground shadow-e2 backdrop-blur transition-all hover:bg-background active:translate-y-px"
-              >
-                <HugeiconsIcon icon={playing ? PauseIcon : PlayIcon} size={16} />
-              </button>
+              <VideoScrubber
+                playing={playing}
+                currentFrame={currentFrame}
+                durationInFrames={durationInFrames}
+                fps={PREVIEW_FPS}
+                onTogglePlay={togglePlay}
+                onSeek={(frame) => playerRef.current?.seekTo(frame)}
+                className="absolute inset-x-3 bottom-3 z-20"
+              />
             )}
             {busy && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/55 px-6 text-center text-white backdrop-blur-sm">
@@ -522,43 +681,10 @@ export function CaptionsGenerator() {
             )}
           </div>
         </div>
-
-        <WordsPerLineSlider
-          value={layout.maxWordsPerLine}
-          onChange={(n) => setLayout((l) => ({ ...l, maxWordsPerLine: n }))}
-        />
-
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="truncate text-xs text-muted-foreground">
-            {file.name}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => void transcribeFromFile()}
-              disabled={busy || !probeReady}
-            >
-              <HugeiconsIcon icon={Refresh01Icon} />
-              Retranscribe
-            </Button>
-            <Button variant="ghost" size="sm" onClick={reset} disabled={busy}>
-              Replace
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => void exportVideo()}
-              disabled={busy || !hasLines || !probeReady}
-            >
-              <HugeiconsIcon icon={Download01Icon} />
-              {exporting ? "Rendering…" : "Download with captions"}
-            </Button>
-          </div>
-        </div>
       </section>
 
-      <aside className="flex min-h-0 flex-col gap-2 md:row-span-2">
-        <div className="flex items-center justify-between">
+      <aside className="flex min-h-0 flex-col gap-2 md:col-start-4 md:row-span-2">
+        <div className="flex h-6 items-center justify-between">
           <div className="font-mono text-[9px] tracking-widest text-muted-foreground uppercase">
             Captions {hasLines ? `· ${lines.length}` : ""}
           </div>
@@ -575,13 +701,34 @@ export function CaptionsGenerator() {
         <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border bg-card/50">
           {hasLines ? (
             <ul className="divide-y">
-              {lines.map((line) => (
+              {lines.map((line, index) => (
                 <CaptionRow
                   key={line.id}
+                  index={index}
                   line={line}
+                  videoDuration={videoDuration}
+                  dragIndex={dragIndex}
+                  dropIndex={dropIndex}
                   onChange={(text) => updateLineText(line.id, text)}
+                  onTiming={(patch) => updateLineTiming(line.id, patch)}
                   onDelete={() => deleteLine(line.id)}
                   onFocus={() => seekTo(line.start)}
+                  onDragStart={(i) => {
+                    setDragIndex(i)
+                    setDropIndex(i)
+                  }}
+                  onDragOver={(i) => setDropIndex(i)}
+                  onDrop={() => {
+                    if (dragIndex !== null && dropIndex !== null) {
+                      moveLine(dragIndex, dropIndex)
+                    }
+                    setDragIndex(null)
+                    setDropIndex(null)
+                  }}
+                  onDragEnd={() => {
+                    setDragIndex(null)
+                    setDropIndex(null)
+                  }}
                 />
               ))}
             </ul>
@@ -609,31 +756,153 @@ export function CaptionsGenerator() {
 }
 
 function CaptionRow({
+  index,
   line,
+  videoDuration,
+  dragIndex,
+  dropIndex,
   onChange,
+  onTiming,
   onDelete,
   onFocus,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
 }: {
+  index: number
   line: CaptionLine
+  videoDuration: number
+  dragIndex: number | null
+  dropIndex: number | null
   onChange: (text: string) => void
+  onTiming: (patch: { start?: number; end?: number }) => void
   onDelete: () => void
   onFocus: () => void
+  onDragStart: (index: number) => void
+  onDragOver: (index: number) => void
+  onDrop: () => void
+  onDragEnd: () => void
 }) {
+  const [rowDraggable, setRowDraggable] = React.useState(false)
+  const [startDraft, setStartDraft] = React.useState<string | null>(null)
+  const [endDraft, setEndDraft] = React.useState<string | null>(null)
+
+  const commitStart = () => {
+    if (startDraft === null) return
+    const parsed = parseTime(startDraft)
+    setStartDraft(null)
+    if (parsed === null || parsed < 0 || parsed >= line.end) return
+    onTiming({ start: parsed })
+  }
+
+  const commitEnd = () => {
+    if (endDraft === null) return
+    const parsed = parseTime(endDraft)
+    const max = videoDuration > 0 ? videoDuration + 0.5 : Infinity
+    setEndDraft(null)
+    if (parsed === null || parsed <= line.start || parsed > max) return
+    onTiming({ end: parsed })
+  }
+
+  const isDragging = dragIndex === index
+  const isDropTarget =
+    dragIndex !== null && dropIndex === index && dragIndex !== index
+  const showTopInsertLine = isDropTarget && dragIndex! > index
+  const showBottomInsertLine = isDropTarget && dragIndex! < index
+
   return (
-    <li className="group flex items-start gap-2 px-3 py-2 transition-colors hover:bg-muted/40">
+    <li
+      draggable={rowDraggable}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move"
+        e.dataTransfer.setData("text/plain", String(index))
+        onDragStart(index)
+      }}
+      onDragOver={(e) => {
+        if (dragIndex === null) return
+        e.preventDefault()
+        e.dataTransfer.dropEffect = "move"
+        onDragOver(index)
+      }}
+      onDrop={(e) => {
+        if (dragIndex === null) return
+        e.preventDefault()
+        onDrop()
+        setRowDraggable(false)
+      }}
+      onDragEnd={() => {
+        setRowDraggable(false)
+        onDragEnd()
+      }}
+      className={cn(
+        "group relative flex items-start gap-1.5 px-2 py-2 transition-colors hover:bg-muted/40",
+        isDragging && "opacity-40",
+        showTopInsertLine &&
+          "before:absolute before:top-0 before:left-2 before:right-2 before:h-0.5 before:bg-primary",
+        showBottomInsertLine &&
+          "after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:bg-primary"
+      )}
+    >
       <button
         type="button"
-        onClick={onFocus}
-        className="shrink-0 rounded px-1 py-0.5 font-mono text-[10px] tracking-tight text-muted-foreground tnum hover:bg-muted hover:text-foreground"
-        title="Jump to this time"
+        onMouseDown={() => setRowDraggable(true)}
+        onMouseUp={() => setRowDraggable(false)}
+        onBlur={() => setRowDraggable(false)}
+        aria-label="Drag to reorder"
+        title="Drag to reorder"
+        className="mt-1 shrink-0 cursor-grab rounded p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted hover:text-foreground active:cursor-grabbing"
       >
-        {formatTime(line.start)}
+        <HugeiconsIcon
+          icon={DragDropVerticalIcon}
+          size={12}
+          strokeWidth={1.75}
+        />
       </button>
+      <div className="flex shrink-0 flex-col gap-0.5">
+        <input
+          type="text"
+          value={startDraft ?? formatTime(line.start)}
+          onChange={(e) => setStartDraft(e.target.value)}
+          onBlur={commitStart}
+          onFocus={() => {
+            onFocus()
+            setStartDraft(formatTime(line.start))
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur()
+            if (e.key === "Escape") {
+              setStartDraft(null)
+              e.currentTarget.blur()
+            }
+          }}
+          aria-label="Start time"
+          title="Start time"
+          className="w-14 rounded px-1 py-0.5 text-left font-mono text-[10px] tracking-tight text-muted-foreground tnum hover:bg-muted focus:bg-background focus:text-foreground focus:outline focus:outline-1 focus:outline-border"
+        />
+        <input
+          type="text"
+          value={endDraft ?? formatTime(line.end)}
+          onChange={(e) => setEndDraft(e.target.value)}
+          onBlur={commitEnd}
+          onFocus={() => setEndDraft(formatTime(line.end))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur()
+            if (e.key === "Escape") {
+              setEndDraft(null)
+              e.currentTarget.blur()
+            }
+          }}
+          aria-label="End time"
+          title="End time"
+          className="w-14 rounded px-1 py-0.5 text-left font-mono text-[10px] tracking-tight text-muted-foreground tnum hover:bg-muted focus:bg-background focus:text-foreground focus:outline focus:outline-1 focus:outline-border"
+        />
+      </div>
       <textarea
         value={line.text}
         onChange={(e) => onChange(e.target.value)}
         onFocus={onFocus}
-        rows={Math.min(3, Math.max(1, Math.ceil(line.text.length / 34)))}
+        rows={Math.min(3, Math.max(1, Math.ceil(line.text.length / 28)))}
         className={cn(
           "flex-1 resize-none rounded-md border border-transparent bg-transparent px-2 py-1 text-[13px] leading-snug",
           "focus:border-border focus:bg-background focus:outline-none"
@@ -651,7 +920,7 @@ function CaptionRow({
   )
 }
 
-function WordsPerLineSlider({
+function CharsPerLineSlider({
   value,
   onChange,
 }: {
@@ -659,30 +928,15 @@ function WordsPerLineSlider({
   onChange: (n: number) => void
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border bg-card p-3">
-      <div className="flex flex-col">
-        <span className="font-mono text-[9px] tracking-widest text-muted-foreground uppercase">
-          Words per line
-        </span>
-        <span className="mt-0.5 text-[13px] font-semibold tracking-tight tnum">
-          {value === 0 ? "Auto" : `${value} ${value === 1 ? "word" : "words"}`}
-        </span>
-      </div>
-      <input
-        type="range"
-        min={0}
-        max={8}
-        step={1}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="flex-1 accent-primary"
-        aria-label="Words per line"
-      />
-      <div className="flex gap-1 font-mono text-[9px] tracking-widest text-muted-foreground uppercase">
-        <span>Auto</span>
-        <span className="text-muted-foreground/40">·</span>
-        <span>8</span>
-      </div>
-    </div>
+    <input
+      type="range"
+      min={0}
+      max={50}
+      step={1}
+      value={value}
+      onChange={(e) => onChange(Number(e.target.value))}
+      className="w-full accent-primary"
+      aria-label="Max characters per line"
+    />
   )
 }

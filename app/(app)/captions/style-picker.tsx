@@ -5,9 +5,6 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 import type { CaptionStyle } from "@/compositions/captions/types"
 
-const MONO =
-  'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace'
-
 const CLEAN_STROKE: React.CSSProperties = {
   WebkitTextStroke: "1px #000",
   paintOrder: "stroke fill",
@@ -81,24 +78,6 @@ const PREVIEWS: Preview[] = [
     ),
   },
   {
-    id: "minimal",
-    render: (
-      <span
-        style={{
-          background: "rgba(0,0,0,0.58)",
-          color: "#fff",
-          padding: "3px 9px",
-          borderRadius: 5,
-          fontWeight: 500,
-          fontSize: 12,
-          letterSpacing: 0.15,
-        }}
-      >
-        Minimal
-      </span>
-    ),
-  },
-  {
     id: "impact",
     render: (
       <span
@@ -113,71 +92,6 @@ const PREVIEWS: Preview[] = [
         }}
       >
         Impact
-      </span>
-    ),
-  },
-  {
-    id: "highlight",
-    render: (
-      <span
-        style={{
-          color: "#0b0b0b",
-          fontWeight: 800,
-          padding: "2px 7px",
-          background: "#ffe94d",
-          borderRadius: 4,
-          letterSpacing: -0.2,
-        }}
-      >
-        Highlight
-      </span>
-    ),
-  },
-  {
-    id: "typewriter",
-    render: (
-      <span
-        style={{
-          color: "#fff",
-          background: "rgba(0,0,0,0.55)",
-          padding: "3px 8px",
-          borderRadius: 4,
-          fontFamily: MONO,
-          fontWeight: 600,
-          fontSize: 12,
-        }}
-      >
-        Typed
-        <span
-          style={{
-            display: "inline-block",
-            width: 2,
-            height: 11,
-            background: "#fff",
-            marginLeft: 3,
-            verticalAlign: "-2px",
-          }}
-        />
-      </span>
-    ),
-  },
-  {
-    id: "bubble",
-    render: (
-      <span
-        style={{
-          background:
-            "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(244,244,246,0.96) 100%)",
-          color: "#111",
-          padding: "4px 11px",
-          borderRadius: 999,
-          fontWeight: 700,
-          fontSize: 12,
-          letterSpacing: -0.2,
-          boxShadow: "0 3px 8px rgba(0,0,0,0.28)",
-        }}
-      >
-        Bubble
       </span>
     ),
   },
@@ -199,7 +113,50 @@ const PREVIEWS: Preview[] = [
       </span>
     ),
   },
+  {
+    id: "gradient",
+    render: (
+      <span
+        style={{
+          fontWeight: 900,
+          textTransform: "uppercase",
+          letterSpacing: -0.4,
+          color: "transparent",
+          backgroundImage:
+            "linear-gradient(135deg, #ff7a8a 0%, #ff5eb2 35%, #b06bff 70%, #5a7bff 100%)",
+          WebkitBackgroundClip: "text",
+          backgroundClip: "text",
+          filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.5))",
+        }}
+      >
+        Gradient
+      </span>
+    ),
+  },
+  {
+    id: "outlined",
+    render: (
+      <span
+        style={{
+          fontWeight: 900,
+          textTransform: "uppercase",
+          letterSpacing: -0.4,
+          color: "transparent",
+          WebkitTextStroke: "1.25px #ffffff",
+          paintOrder: "stroke fill",
+          filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.7))",
+        }}
+      >
+        Outlined
+      </span>
+    ),
+  },
 ]
+
+const INACTIVE_BG =
+  "linear-gradient(135deg, oklch(0.26 0 0) 0%, oklch(0.13 0 0) 100%)"
+const ACTIVE_BG =
+  "linear-gradient(135deg, oklch(0.4 0 0) 0%, oklch(0.2 0 0) 100%)"
 
 export function StylePicker({
   value,
@@ -209,7 +166,7 @@ export function StylePicker({
   onChange: (style: CaptionStyle) => void
 }) {
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex h-full flex-col gap-2">
       {PREVIEWS.map((s) => {
         const active = s.id === value
         return (
@@ -220,15 +177,10 @@ export function StylePicker({
             aria-pressed={active}
             title={s.id}
             className={cn(
-              "relative flex h-16 items-center justify-center overflow-hidden rounded-lg transition-all",
-              active
-                ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
-                : "hover:brightness-110"
+              "relative flex min-h-[40px] flex-1 items-center justify-center overflow-hidden rounded-lg transition-all",
+              active ? "shadow-e2" : "opacity-80 hover:opacity-100"
             )}
-            style={{
-              background:
-                "linear-gradient(135deg, oklch(0.3 0 0) 0%, oklch(0.14 0 0) 100%)",
-            }}
+            style={{ background: active ? ACTIVE_BG : INACTIVE_BG }}
           >
             <span className="text-[13px] leading-none">{s.render}</span>
           </button>

@@ -242,8 +242,7 @@ export function GifGenerator() {
           onFile={loadFile}
           accept="video/*"
           icon={VideoReplayIcon}
-          label="Drop a video clip to turn into a GIF"
-          hint="MP4 or WebM · keep it short for best results"
+          label="Drop a video"
         />
       </div>
     )

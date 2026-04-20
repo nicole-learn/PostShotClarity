@@ -9,7 +9,7 @@
   },
   {
     "name": "anime-wow-reaction",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768879371262-s6bzgh.mp3"
+    "url": "/meme-sounds/anime-wow-reaction.mp3"
   },
   {
     "name": "ara-ara",
@@ -21,15 +21,15 @@
   },
   {
     "name": "bruh-meme-vocal",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768879503215-bm52db.mp3"
+    "url": "/meme-sounds/bruh-meme-vocal.mp3"
   },
   {
     "name": "cartoonish-flexatone-question",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768546387175-x67iji.wav"
+    "url": "/meme-sounds/cartoonish-flexatone-question.wav"
   },
   {
     "name": "classic-gaming-punch-impact",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768879511084-hwp1fn.mp3"
+    "url": "/meme-sounds/classic-gaming-punch-impact.mp3"
   },
   {
     "name": "discord-notification",
@@ -37,7 +37,7 @@
   },
   {
     "name": "dramatic-anime-shock-sting",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768346339062-apv1ha.wav"
+    "url": "/meme-sounds/dramatic-anime-shock-sting.wav"
   },
   {
     "name": "emotional-damage",
@@ -52,10 +52,6 @@
     "url": "/meme-sounds/gta-san-andreas-ah-shit.mp3"
   },
   {
-    "name": "gta-wasted",
-    "url": "/meme-sounds/gta-wasted.mp3"
-  },
-  {
     "name": "hello-there",
     "url": "/meme-sounds/hello-there.mp3"
   },
@@ -65,23 +61,15 @@
   },
   {
     "name": "joe-budden-gunshot-impact",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768879481948-a8ccmn.mp3"
+    "url": "/meme-sounds/joe-budden-gunshot-impact.mp3"
   },
   {
     "name": "kids-cheering-yay-applause",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768879496022-mqonub.mp3"
+    "url": "/meme-sounds/kids-cheering-yay-applause.mp3"
   },
   {
     "name": "mario-coin",
     "url": "/meme-sounds/mario-coin.mp3"
-  },
-  {
-    "name": "mario-death",
-    "url": "/meme-sounds/mario-death.mp3"
-  },
-  {
-    "name": "mario-jump",
-    "url": "/meme-sounds/mario-jump.mp3"
   },
   {
     "name": "metal-pipe-falling",
@@ -101,7 +89,7 @@
   },
   {
     "name": "rizz-guitar-slide-accent",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768433085109-vc47pu.wav"
+    "url": "/meme-sounds/rizz-guitar-slide-accent.wav"
   },
   {
     "name": "rizz-sound-effect",
@@ -125,7 +113,7 @@
   },
   {
     "name": "vocal-confused-huh",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768879489277-so7gro.mp3"
+    "url": "/meme-sounds/vocal-confused-huh.mp3"
   },
   {
     "name": "windows-xp-error",

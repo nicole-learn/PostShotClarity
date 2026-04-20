@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils"
 
 export function Logomark({
   className,
-  size = 22,
+  size = 26,
 }: {
   className?: string
   size?: number
@@ -29,7 +29,7 @@ export function Wordmark({
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
       <Logomark />
-      <span className="truncate text-[14px] font-semibold tracking-tight">
+      <span className="truncate text-[16px] font-semibold tracking-tight">
         PostShotClarity
       </span>
     </div>

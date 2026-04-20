@@ -16,7 +16,7 @@ import {
 import { useTheme } from "next-themes"
 
 import { cn } from "@/lib/utils"
-import { tools } from "@/lib/tools"
+import { tools, toolCategories } from "@/lib/tools"
 import { Logomark, Wordmark } from "@/components/logo"
 
 const SUPPORT_URL = "https://www.nic0le.com/tips"
@@ -184,21 +184,28 @@ function NavItems({
   onNavigate?: () => void
 }) {
   const pathname = usePathname()
-  const live = tools.filter((t) => !t.comingSoon)
   const soon = tools.filter((t) => t.comingSoon)
   return (
     <nav className="flex flex-col">
-      <NavSection label="Tools" collapsed={collapsed}>
-        {live.map((tool) => (
-          <NavItem
-            key={tool.slug}
-            tool={tool}
-            collapsed={collapsed}
-            active={pathname === `/${tool.slug}`}
-            onNavigate={onNavigate}
-          />
-        ))}
-      </NavSection>
+      {toolCategories.map((category) => {
+        const items = tools.filter(
+          (t) => t.category === category && !t.comingSoon
+        )
+        if (items.length === 0) return null
+        return (
+          <NavSection key={category} label={category} collapsed={collapsed}>
+            {items.map((tool) => (
+              <NavItem
+                key={tool.slug}
+                tool={tool}
+                collapsed={collapsed}
+                active={pathname === `/${tool.slug}`}
+                onNavigate={onNavigate}
+              />
+            ))}
+          </NavSection>
+        )
+      })}
       {soon.length > 0 && (
         <NavSection label="Coming Soon" collapsed={collapsed}>
           {soon.map((tool) => (

@@ -3,26 +3,43 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3"
 import { getRenderProgress } from "@remotion/lambda/client"
 
 import { bucketName, functionName, region, s3 } from "@/lib/remotion-lambda"
+import { enforce, progressLimiter } from "@/lib/ratelimit"
+import { anyInputKey, renderId as renderIdSchema } from "@/lib/validation"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
 
 export async function GET(req: NextRequest) {
-  const renderId = req.nextUrl.searchParams.get("renderId")
-  const outputBucket = req.nextUrl.searchParams.get("bucketName")
-  const inputKey = req.nextUrl.searchParams.get("inputKey")
+  const limited = await enforce(req, progressLimiter, "progress")
+  if (limited) return limited
 
-  if (!renderId || !outputBucket) {
-    return NextResponse.json(
-      { error: "Missing renderId or bucketName" },
-      { status: 400 }
-    )
+  const rawRenderId = req.nextUrl.searchParams.get("renderId")
+  const outputBucket = req.nextUrl.searchParams.get("bucketName")
+  const rawInputKey = req.nextUrl.searchParams.get("inputKey")
+
+  const renderIdParsed = renderIdSchema.safeParse(rawRenderId)
+  if (!renderIdParsed.success) {
+    return NextResponse.json({ error: "Invalid renderId" }, { status: 400 })
+  }
+  if (outputBucket !== bucketName) {
+    return NextResponse.json({ error: "Invalid bucketName" }, { status: 400 })
+  }
+
+  // inputKey is optional; if present it must match one of our issued key shapes
+  // so a caller can't smuggle in an arbitrary S3 key for us to delete.
+  let inputKey: string | undefined
+  if (rawInputKey) {
+    const parsed = anyInputKey.safeParse(rawInputKey)
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid inputKey" }, { status: 400 })
+    }
+    inputKey = parsed.data
   }
 
   try {
     const progress = await getRenderProgress({
-      renderId,
-      bucketName: outputBucket,
+      renderId: renderIdParsed.data,
+      bucketName,
       functionName,
       region,
       // Read render state directly from S3 instead of invoking the Lambda

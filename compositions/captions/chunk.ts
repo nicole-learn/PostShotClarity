@@ -6,40 +6,41 @@ export type CaptionChunk = {
   start: number
   end: number
   words: TranscribedWord[]
-  /** Index of this chunk within its parent line, for animation keying. */
   indexInLine: number
 }
 
 /**
- * Expand transcribed lines into on-screen chunks. When `maxWords` is 0, each
- * caption line renders as one chunk. When set, each line is split into
- * sequential chunks of up to `maxWords` words. Each chunk's end is stretched
- * to the *next* chunk's start so there is no visual gap between them — this
- * mirrors how TikTok-style captions stay on screen until the next group
- * takes over.
+ * Pack each caption line's words into chunks whose joined text stays under
+ * `maxChars` (spaces included). When `maxChars` is 0, each line renders as
+ * a single chunk. Chunks are kept on screen until the next chunk takes
+ * over so there are no visual gaps between them.
+ *
+ * Character-based chunking is used because word-count is a poor proxy for
+ * visible line length — short words like "a it be" fit wildly differently
+ * than long ones like "particularly", and different caption styles render
+ * the same words at different widths.
  */
 export function chunkLines(
   lines: CaptionLine[],
-  maxWords: number
+  maxChars: number
 ): CaptionChunk[] {
-  const out: CaptionChunk[] = []
-  for (const line of lines) {
-    if (!maxWords || maxWords <= 0) {
-      out.push({
-        id: `${line.id}-0`,
-        text: line.text,
-        start: line.start,
-        end: line.end,
-        words: line.words,
-        indexInLine: 0,
-      })
-      continue
-    }
+  if (!maxChars || maxChars <= 0) {
+    return lines.map((line) => ({
+      id: `${line.id}-0`,
+      text: line.text,
+      start: line.start,
+      end: line.end,
+      words: line.words,
+      indexInLine: 0,
+    }))
+  }
 
+  const out: CaptionChunk[] = []
+
+  for (const line of lines) {
     const tokens = line.text.split(/\s+/).filter(Boolean)
     if (tokens.length === 0) continue
 
-    const duration = Math.max(0.05, line.end - line.start)
     const origJoined = line.words
       .map((w) => w.word.trim())
       .join(" ")
@@ -48,57 +49,56 @@ export function chunkLines(
     const matches =
       origJoined === curJoined && line.words.length === tokens.length
 
-    type Pending = {
-      slice: string[]
-      wordTimings: TranscribedWord[]
-      start: number
-      lastEnd: number
-    }
-    const pending: Pending[] = []
+    const duration = Math.max(0.05, line.end - line.start)
+    const perToken = duration / tokens.length
+    const slotStart = (i: number) =>
+      matches ? line.words[i].start : line.start + i * perToken
+    const slotEnd = (i: number) =>
+      matches ? line.words[i].end : line.start + (i + 1) * perToken
 
-    for (let i = 0, idx = 0; i < tokens.length; i += maxWords, idx++) {
-      const slice = tokens.slice(i, i + maxWords)
-      let start: number
-      let lastEnd: number
-      let wordTimings: TranscribedWord[]
-
-      if (matches) {
-        const origSlice = line.words.slice(i, i + maxWords)
-        start = origSlice[0].start
-        lastEnd = origSlice[origSlice.length - 1].end
-        wordTimings = origSlice.map((w, j) => ({
-          word: slice[j],
-          start: w.start,
-          end: w.end,
-        }))
-      } else {
-        const perToken = duration / tokens.length
-        start = line.start + i * perToken
-        lastEnd = line.start + (i + slice.length) * perToken
-        wordTimings = slice.map((w, j) => ({
-          word: w,
-          start: line.start + (i + j) * perToken,
-          end: line.start + (i + j + 1) * perToken,
-        }))
+    // Greedy pack: take words while they still fit within maxChars
+    // (including a space before each subsequent word). A single over-long
+    // word still gets its own chunk so we never drop content.
+    type Pending = { tokens: string[]; startIdx: number; endIdx: number }
+    const packed: Pending[] = []
+    let i = 0
+    while (i < tokens.length) {
+      const startIdx = i
+      const group: string[] = []
+      let chars = 0
+      while (i < tokens.length) {
+        const t = tokens[i]
+        const add = t.length + (group.length > 0 ? 1 : 0)
+        if (group.length > 0 && chars + add > maxChars) break
+        group.push(t)
+        chars += add
+        i++
       }
-
-      pending.push({ slice, wordTimings, start, lastEnd })
+      packed.push({ tokens: group, startIdx, endIdx: i })
     }
 
-    for (let k = 0; k < pending.length; k++) {
-      const p = pending[k]
-      const nextStart = pending[k + 1]?.start ?? line.end
-      // Hold the chunk on screen until the next chunk takes over.
-      const end = Math.max(p.lastEnd, nextStart)
+    for (let k = 0; k < packed.length; k++) {
+      const p = packed[k]
+      const start = slotStart(p.startIdx)
+      const lastEnd = slotEnd(p.endIdx - 1)
+      const nextStart =
+        packed[k + 1] != null ? slotStart(packed[k + 1].startIdx) : line.end
+      const end = Math.max(lastEnd, nextStart)
+      const wordTimings: TranscribedWord[] = p.tokens.map((word, j) => ({
+        word,
+        start: slotStart(p.startIdx + j),
+        end: slotEnd(p.startIdx + j),
+      }))
       out.push({
         id: `${line.id}-${k}`,
-        text: p.slice.join(" "),
-        start: p.start,
+        text: p.tokens.join(" "),
+        start,
         end,
-        words: p.wordTimings,
+        words: wordTimings,
         indexInLine: k,
       })
     }
   }
+
   return out
 }

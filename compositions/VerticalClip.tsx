@@ -88,7 +88,10 @@ export const VerticalClip: React.FC<Props> = ({
             width: placement.width,
             height: placement.height,
             overflow: "hidden",
-            borderRadius: webcam.radius,
+            borderRadius:
+              webcam.shape === "circle"
+                ? "50%"
+                : webcam.radius,
             boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
           }}
         >

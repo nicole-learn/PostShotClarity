@@ -444,8 +444,7 @@ export function MemeSoundsEditor() {
           onFile={handleUpload}
           accept="video/*"
           icon={VideoReplayIcon}
-          label="Drop a clip to add meme sounds to"
-          hint="MP4 · any aspect ratio"
+          label="Drop a video"
         />
       </div>
     )
@@ -464,17 +463,9 @@ export function MemeSoundsEditor() {
             durationInFrames={durationInFrames}
             fps={FPS}
             style={{ width: "100%", height: "100%" }}
-            clickToPlay={false}
+            clickToPlay
             loop
           />
-          <button
-            type="button"
-            onClick={togglePlay}
-            aria-label={isPlaying ? "Pause" : "Play"}
-            className="absolute right-3 bottom-3 flex size-10 items-center justify-center rounded-full bg-background/90 text-foreground shadow-e2 backdrop-blur transition-all hover:bg-background active:translate-y-px"
-          >
-            <HugeiconsIcon icon={isPlaying ? PauseIcon : PlayIcon} size={16} />
-          </button>
         </div>
 
         <Timeline
@@ -484,6 +475,8 @@ export function MemeSoundsEditor() {
           playheadFrame={playheadFrame}
           sounds={placedSounds}
           selectedId={selectedId}
+          isPlaying={isPlaying}
+          onTogglePlay={togglePlay}
           onSeek={seekSec}
           onSelect={setSelectedId}
           onMove={moveSound}
@@ -558,6 +551,8 @@ function Timeline({
   playheadFrame,
   sounds,
   selectedId,
+  isPlaying,
+  onTogglePlay,
   onSeek,
   onSelect,
   onMove,
@@ -568,6 +563,8 @@ function Timeline({
   playheadFrame: number
   sounds: PlacedSound[]
   selectedId: string | null
+  isPlaying: boolean
+  onTogglePlay: () => void
   onSeek: (sec: number) => void
   onSelect: (id: string) => void
   onMove: (id: string, startFrame: number) => void
@@ -617,47 +614,61 @@ function Timeline({
           {formatTime(playheadFrame / fps)} · {formatTime(durationSec)}
         </span>
       </div>
-      <div
-        ref={trackRef}
-        onPointerDown={handleTrackPointerDown}
-        onPointerMove={handleTrackPointerMove}
-        onPointerUp={handleTrackPointerUp}
-        onPointerCancel={handleTrackPointerUp}
-        className="relative w-full cursor-pointer touch-none overflow-hidden rounded-lg border bg-muted/30 select-none"
-        style={{ height: trackHeight }}
-      >
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-6 border-b bg-muted/40">
-          <TickMarks durationSec={durationSec} />
-        </div>
-        <VideoWaveform url={videoUrl} />
-
-        {sounds.length === 0 && (
-          <div className="pointer-events-none absolute inset-x-0 top-6 bottom-0 flex items-center justify-center">
-            <span className="text-[11px] text-muted-foreground/70">
-              Click a sound on the right to drop it at the playhead
-            </span>
-          </div>
-        )}
-        {rows.map((row, rowIndex) =>
-          row.map((s) => (
-            <SoundPill
-              key={s.id}
-              sound={s}
-              rowIndex={rowIndex}
-              durationSec={durationSec}
-              fps={fps}
-              selected={selectedId === s.id}
-              onSelect={() => onSelect(s.id)}
-              onMove={(startFrame) => onMove(s.id, startFrame)}
-              trackRef={trackRef}
-            />
-          ))
-        )}
-        <div
-          className="pointer-events-none absolute top-0 bottom-0 w-px bg-foreground"
-          style={{ left: `${playheadPct}%` }}
+      <div className="flex items-stretch gap-0 overflow-hidden rounded-lg border bg-muted/30">
+        <button
+          type="button"
+          onClick={onTogglePlay}
+          aria-label={isPlaying ? "Pause" : "Play"}
+          className="group flex w-12 shrink-0 items-center justify-center border-r bg-background text-foreground transition-colors hover:bg-foreground hover:text-background active:translate-y-px"
         >
-          <div className="absolute top-1.5 -left-1 size-2 rounded-full bg-foreground" />
+          <HugeiconsIcon
+            icon={isPlaying ? PauseIcon : PlayIcon}
+            size={16}
+            strokeWidth={2}
+          />
+        </button>
+        <div
+          ref={trackRef}
+          onPointerDown={handleTrackPointerDown}
+          onPointerMove={handleTrackPointerMove}
+          onPointerUp={handleTrackPointerUp}
+          onPointerCancel={handleTrackPointerUp}
+          className="relative flex-1 cursor-pointer touch-none overflow-hidden select-none"
+          style={{ height: trackHeight }}
+        >
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-6 border-b bg-muted/40">
+            <TickMarks durationSec={durationSec} />
+          </div>
+          <VideoWaveform url={videoUrl} />
+
+          {sounds.length === 0 && (
+            <div className="pointer-events-none absolute inset-x-0 top-6 bottom-0 flex items-center justify-center">
+              <span className="text-[11px] text-muted-foreground/70">
+                Click a sound on the right to drop it at the playhead
+              </span>
+            </div>
+          )}
+          {rows.map((row, rowIndex) =>
+            row.map((s) => (
+              <SoundPill
+                key={s.id}
+                sound={s}
+                rowIndex={rowIndex}
+                durationSec={durationSec}
+                fps={fps}
+                selected={selectedId === s.id}
+                onSelect={() => onSelect(s.id)}
+                onMove={(startFrame) => onMove(s.id, startFrame)}
+                trackRef={trackRef}
+              />
+            ))
+          )}
+          <div
+            className="pointer-events-none absolute top-0 bottom-0 w-px bg-foreground"
+            style={{ left: `${playheadPct}%` }}
+          >
+            <div className="absolute top-1.5 -left-1 size-2 rounded-full bg-foreground" />
+          </div>
         </div>
       </div>
     </div>
@@ -1014,7 +1025,7 @@ function SoundWaveform({ url }: { url: string }) {
     if (!el) return
     let cancelled = false
     const load = () => {
-      extractSoundPeaks(url, 44)
+      extractSoundPeaks(url, 60)
         .then((p) => {
           if (!cancelled) setPeaks(p)
         })
@@ -1039,7 +1050,7 @@ function SoundWaveform({ url }: { url: string }) {
   return (
     <div
       ref={hostRef}
-      className="flex h-10 w-full items-center gap-[1.5px]"
+      className="absolute inset-0 flex items-center gap-[1.5px] px-2.5"
       aria-hidden
     >
       {peaks
@@ -1048,18 +1059,18 @@ function SoundWaveform({ url }: { url: string }) {
               key={i}
               className="flex-1 rounded-[1px]"
               style={{
-                height: `${Math.max(10, p * 100)}%`,
+                height: `${Math.max(10, p * 80)}%`,
                 background:
-                  "color-mix(in oklch, var(--tool-sounds) 55%, transparent)",
+                  "color-mix(in oklch, var(--tool-sounds) 18%, transparent)",
               }}
             />
           ))
-        : Array.from({ length: 44 }).map((_, i) => (
+        : Array.from({ length: 60 }).map((_, i) => (
             <span
               key={i}
-              className="flex-1 rounded-[1px] bg-muted-foreground/15"
+              className="flex-1 rounded-[1px] bg-foreground/6"
               style={{
-                height: `${20 + 20 * Math.abs(Math.sin(i / 2.8))}%`,
+                height: `${18 + 18 * Math.abs(Math.sin(i / 2.8))}%`,
               }}
             />
           ))}
@@ -1097,13 +1108,13 @@ function SoundCard({
       }}
       title={`Add "${sound.label}" at playhead`}
       className={cn(
-        "group flex cursor-pointer flex-col gap-1.5 rounded-lg border bg-background p-2.5 transition-colors",
-        "hover:border-foreground/20 hover:bg-muted/50 active:bg-muted",
+        "group relative flex h-14 cursor-pointer items-center overflow-hidden rounded-lg border bg-background transition-colors",
+        "hover:border-foreground/20 hover:bg-muted/40 active:bg-muted",
         isPreviewing && "border-foreground/30 bg-muted"
       )}
     >
       <SoundWaveform url={sound.url} />
-      <div className="flex items-center gap-2">
+      <div className="relative flex h-full w-full items-center gap-2 px-2.5">
         <span
           role="button"
           tabIndex={0}
@@ -1120,19 +1131,19 @@ function SoundCard({
           }}
           aria-label={isPreviewing ? "Stop preview" : "Preview sound"}
           className={cn(
-            "flex size-6 shrink-0 items-center justify-center rounded-md border transition-colors",
+            "flex size-7 shrink-0 items-center justify-center rounded-md border transition-colors",
             isPreviewing
               ? "border-transparent bg-foreground text-background"
-              : "border-border bg-background text-muted-foreground hover:text-foreground"
+              : "border-border bg-background/90 text-muted-foreground backdrop-blur hover:bg-background hover:text-foreground"
           )}
         >
           <HugeiconsIcon
             icon={isPreviewing ? PauseIcon : PlayIcon}
-            size={10}
+            size={11}
             strokeWidth={1.75}
           />
         </span>
-        <span className="min-w-0 flex-1 truncate text-[11px]">
+        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold tracking-tight text-foreground">
           {sound.label}
         </span>
         <span
@@ -1151,9 +1162,9 @@ function SoundCard({
           }}
           aria-label={`Download ${sound.label}`}
           title={`Download "${sound.label}"`}
-          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
         >
-          <HugeiconsIcon icon={Download01Icon} size={10} strokeWidth={1.75} />
+          <HugeiconsIcon icon={Download01Icon} size={11} strokeWidth={1.75} />
         </span>
       </div>
     </div>

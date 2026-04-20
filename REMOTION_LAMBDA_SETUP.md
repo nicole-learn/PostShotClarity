@@ -197,7 +197,15 @@ REMOTION_AWS_SERVE_URL=https://remotionlambda-useast1-abcd1234.s3.us-east-1.amaz
 ```
 
 Re-run this command whenever you change anything under `compositions/` or
-`public/` (anything baked into the bundle).
+`public/` — anything baked into the bundle. In particular, **adding or
+removing files in `public/meme-sounds/` requires a redeploy**, because the
+`MemeSoundsClip` composition serves those files via `staticFile()` at render
+time, resolving them against the bundled Serve URL rather than the live
+Next.js origin. A shortcut is in `package.json`:
+
+```bash
+npm run remotion:deploy-site
+```
 
 ### 5c. (Optional) Check concurrency quota
 
@@ -237,16 +245,35 @@ let me know and I'll:
 
 ---
 
+## Compositions in the bundle
+
+`compositions/Root.tsx` registers three compositions that Lambda can render:
+
+| ID | Renders | Props source | Notes |
+| --- | --- | --- | --- |
+| `VerticalClip` | 1080×1920 h264 | `/api/render-vertical` | Reframe + webcam overlay |
+| `MemeSoundsClip` | source dimensions, h264 | `/api/render-meme-sounds` | Mixes user video with `<Audio>` tracks from `public/meme-sounds/` |
+| `Captions` | configurable, h264 | `/api/render-captions` (if wired) | Burn-in captions |
+
+All three share the same Lambda function and Serve URL — you only have to
+deploy the function once. The site bundle (created by
+`remotion:deploy-site`) is what carries the composition code *and* any
+`public/` assets the compositions reference; redeploy whenever either
+changes.
+
+---
+
 ## Ongoing operations cheat sheet
 
 | Task | Command |
 | --- | --- |
-| Redeploy site after composition changes | `npx remotion lambda sites create compositions/index.ts --site-name=postshotclarity` |
+| Redeploy site after composition or `public/` changes | `npm run remotion:deploy-site` |
 | List deployed functions | `npx remotion lambda functions ls` |
 | List deployed sites | `npx remotion lambda sites ls` |
 | Remove an old function (after upgrading Remotion) | `npx remotion lambda functions rmall` |
 | Remove an old site | `npx remotion lambda sites rm <name>` |
-| Smoke-test a render from the CLI | `npx remotion lambda render "$REMOTION_AWS_SERVE_URL" VerticalClip` |
+| Smoke-test `VerticalClip` from the CLI | `npx remotion lambda render "$REMOTION_AWS_SERVE_URL" VerticalClip` |
+| Smoke-test `MemeSoundsClip` from the CLI | `npx remotion lambda render "$REMOTION_AWS_SERVE_URL" MemeSoundsClip` |
 | Re-validate IAM setup | `npx remotion lambda policies validate` |
 
 ---

@@ -11,35 +11,39 @@ import {
   s3,
   serveUrl,
 } from "@/lib/remotion-lambda"
+import { enforce, renderLimiter } from "@/lib/ratelimit"
+import { renderBody } from "@/lib/validation"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
 
-export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => null)) as {
-    key?: string
-    props?: Record<string, unknown>
-  } | null
+const MAX_BODY_BYTES = 256 * 1024
 
-  if (
-    !body ||
-    typeof body.key !== "string" ||
-    typeof body.props !== "object" ||
-    body.props === null
-  ) {
-    return NextResponse.json({ error: "Missing key or props" }, { status: 400 })
+export async function POST(req: NextRequest) {
+  const limited = await enforce(req, renderLimiter, "render-meme-sounds")
+  if (limited) return limited
+
+  const lenHeader = req.headers.get("content-length")
+  if (lenHeader && Number(lenHeader) > MAX_BODY_BYTES) {
+    return NextResponse.json({ error: "Payload too large" }, { status: 413 })
+  }
+
+  const raw = (await req.json().catch(() => null)) as unknown
+  const parsed = renderBody.safeParse(raw)
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid body" }, { status: 400 })
   }
 
   try {
     const presignedVideoUrl = await getSignedUrl(
       s3,
-      new GetObjectCommand({ Bucket: bucketName, Key: body.key }),
-      { expiresIn: 7200 }
+      new GetObjectCommand({ Bucket: bucketName, Key: parsed.data.key }),
+      { expiresIn: 900 }
     )
 
     const downloadName = `meme-sounds-${randomUUID()}.mp4`
     const inputProps = {
-      ...body.props,
+      ...parsed.data.props,
       videoSrc: presignedVideoUrl,
       useOffthread: true,
     }
@@ -63,7 +67,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       renderId,
       bucketName: outputBucket,
-      inputKey: body.key,
+      inputKey: parsed.data.key,
     })
   } catch (err) {
     console.error(err)
