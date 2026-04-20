@@ -397,10 +397,8 @@ export function VerticalEditor() {
             ref={sourceVideoRef}
             src={video.url}
             className="absolute inset-0 h-full w-full"
-            muted
             loop
             playsInline
-            autoPlay
           />
           <RectOverlay
             rect={mainCrop}
