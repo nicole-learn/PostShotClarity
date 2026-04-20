@@ -15,11 +15,13 @@ export const RemotionRoot: React.FC = () => {
         height={OUTPUT_HEIGHT}
         defaultProps={{
           videoSrc: "",
-          mainCrop: { x: 0.28, y: 0, width: 0.44, height: 1 },
+          sourceWidth: 1920,
+          sourceHeight: 1080,
+          mainCrop: { x: 0.342, y: 0, width: 0.316, height: 1 },
           webcam: {
             enabled: false,
-            source: { x: 0.05, y: 0.65, width: 0.2, height: 0.3 },
-            placement: { x: 0.05, y: 0.72, width: 0.3, height: 0.23 },
+            source: { x: 0.02, y: 0.65, width: 0.22, height: 0.33 },
+            placement: { x: 0.04, y: 0.72, width: 0.32, height: 0.26 },
             radius: 24,
           },
           background: "#000000",

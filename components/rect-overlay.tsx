@@ -51,8 +51,6 @@ export function RectOverlay({
 }: RectOverlayProps) {
   const wrapperRef = React.useRef<HTMLDivElement>(null)
   const [mode, setMode] = React.useState<Mode>(null)
-  const modeRef = React.useRef(mode)
-  modeRef.current = mode
 
   React.useEffect(() => {
     function getParentRect() {
@@ -65,7 +63,7 @@ export function RectOverlay({
     }
 
     function onMove(e: PointerEvent) {
-      const current = modeRef.current
+      const current = mode
       if (!current) return
       const parentRect = getParentRect()
       if (!parentRect) return
@@ -83,17 +81,21 @@ export function RectOverlay({
       }
 
       const c = current.corner
+      const signedDx = c === "nw" || c === "sw" ? -dx : dx
+      const signedDy = c === "nw" || c === "ne" ? -dy : dy
       let width: number
       let height: number
       if (aspectLock) {
         const ratio = containerAspect() / aspectLock
-        const signedDx = c === "nw" || c === "sw" ? -dx : dx
-        width = clamp(s.width + signedDx, MIN, 1)
+        // Use whichever axis the user is moving more, then lock the other.
+        const dwFromX = signedDx
+        const dwFromY = signedDy / ratio
+        const dw =
+          Math.abs(dwFromX) >= Math.abs(dwFromY) ? dwFromX : dwFromY
+        width = clamp(s.width + dw, MIN, 1)
         height = clamp(width * ratio, MIN, 1)
         if (height === 1) width = height / ratio
       } else {
-        const signedDx = c === "nw" || c === "sw" ? -dx : dx
-        const signedDy = c === "nw" || c === "ne" ? -dy : dy
         width = clamp(s.width + signedDx, MIN, 1)
         height = clamp(s.height + signedDy, MIN, 1)
       }

@@ -32,10 +32,18 @@ function SupportButton() {
   )
 }
 
+function useMounted() {
+  const [mounted, setMounted] = React.useState(false)
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true)
+  }, [])
+  return mounted
+}
+
 function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()
-  const [mounted, setMounted] = React.useState(false)
-  React.useEffect(() => setMounted(true), [])
+  const mounted = useMounted()
   const isDark = mounted && resolvedTheme === "dark"
 
   return (

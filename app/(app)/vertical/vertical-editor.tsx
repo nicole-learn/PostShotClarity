@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { Player } from "@remotion/player"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   CameraVideoIcon,
@@ -12,17 +11,12 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Dropzone } from "@/components/dropzone"
+import { FitBox } from "@/components/fit-box"
 import { RectOverlay } from "@/components/rect-overlay"
+import { VerticalPreview } from "@/components/vertical-preview"
 import { cn } from "@/lib/utils"
-import { VerticalClip } from "@/compositions/VerticalClip"
-import {
-  OUTPUT_HEIGHT,
-  OUTPUT_WIDTH,
-  type Rect,
-  type VerticalClipProps,
-} from "@/compositions/types"
+import { OUTPUT_ASPECT, OUTPUT_HEIGHT, OUTPUT_WIDTH, type Rect } from "@/compositions/types"
 
-const OUTPUT_ASPECT = OUTPUT_WIDTH / OUTPUT_HEIGHT
 const FPS = 30
 
 type VideoMeta = {
@@ -52,36 +46,80 @@ function loadVideo(file: File): Promise<VideoMeta> {
   })
 }
 
+/** Default 9:16 crop that fills the source vertically for a horizontal video. */
 function defaultMainCrop(sourceAspect: number): Rect {
-  const width = Math.min(1, OUTPUT_ASPECT / sourceAspect)
+  // Pixel aspect of the normalized crop must equal OUTPUT_ASPECT (9/16).
+  // rect.width/rect.height = OUTPUT_ASPECT / sourceAspect
+  const ratio = sourceAspect / OUTPUT_ASPECT
+  const width = Math.min(1, 1 / ratio)
+  const height = Math.min(1, width * ratio)
   return {
     x: (1 - width) / 2,
-    y: 0,
+    y: (1 - height) / 2,
     width,
-    height: 1,
+    height,
+  }
+}
+
+/**
+ * Webcam source pixel aspect in the original video coords.
+ * Used to lock the placement rect's aspect so the webcam never gets squished.
+ */
+function webcamPixelAspect(source: Rect, meta: VideoMeta) {
+  return (source.width * meta.width) / Math.max(1, source.height * meta.height)
+}
+
+/**
+ * Placement aspect lock, expressed as a pixel aspect for the OUTPUT canvas.
+ * The rect-overlay uses aspectLock as desired pixel aspect of the rect.
+ */
+function placementAspectLock(source: Rect, meta: VideoMeta) {
+  // Placement pixel aspect == webcam source pixel aspect (no distortion).
+  return webcamPixelAspect(source, meta)
+}
+
+/** Adjust placement rect so its pixel aspect matches the webcam source aspect. */
+function syncPlacementAspect(placement: Rect, source: Rect, meta: VideoMeta): Rect {
+  const targetAspect = webcamPixelAspect(source, meta)
+  // ph * OUT_H should match pw * OUT_W / targetAspect
+  // => ph = pw * (OUTPUT_WIDTH / OUTPUT_HEIGHT) / targetAspect
+  const newHeight = Math.min(
+    1,
+    (placement.width * (OUTPUT_WIDTH / OUTPUT_HEIGHT)) / targetAspect
+  )
+  const newWidth =
+    newHeight === 1
+      ? Math.min(1, targetAspect / (OUTPUT_WIDTH / OUTPUT_HEIGHT))
+      : placement.width
+  return {
+    width: newWidth,
+    height: newHeight,
+    x: Math.min(Math.max(placement.x, 0), 1 - newWidth),
+    y: Math.min(Math.max(placement.y, 0), 1 - newHeight),
   }
 }
 
 export function VerticalEditor() {
   const [video, setVideo] = React.useState<VideoMeta | null>(null)
+  const sourceVideoRef = React.useRef<HTMLVideoElement>(null)
   const [mainCrop, setMainCrop] = React.useState<Rect>({
-    x: 0.28,
+    x: 0.342,
     y: 0,
-    width: 0.44,
+    width: 0.316,
     height: 1,
   })
   const [webcamEnabled, setWebcamEnabled] = React.useState(false)
   const [webcamSource, setWebcamSource] = React.useState<Rect>({
-    x: 0.05,
-    y: 0.6,
+    x: 0.02,
+    y: 0.65,
     width: 0.22,
-    height: 0.35,
+    height: 0.33,
   })
   const [webcamPlacement, setWebcamPlacement] = React.useState<Rect>({
-    x: 0.05,
+    x: 0.04,
     y: 0.72,
-    width: 0.3,
-    height: 0.23,
+    width: 0.32,
+    height: 0.26,
   })
   const [exporting, setExporting] = React.useState(false)
   const [exportProgress, setExportProgress] = React.useState<string | null>(null)
@@ -92,6 +130,8 @@ export function VerticalEditor() {
     const meta = await loadVideo(file)
     setVideo(meta)
     setMainCrop(defaultMainCrop(meta.width / meta.height))
+    // Seed placement aspect to match the default webcam source aspect.
+    setWebcamPlacement((p) => syncPlacementAspect(p, webcamSource, meta))
   }
 
   const reset = () => {
@@ -105,30 +145,27 @@ export function VerticalEditor() {
     ? Math.max(1, Math.floor(video.duration * FPS))
     : FPS
 
-  const inputProps: VerticalClipProps & { useOffthread: boolean } = React.useMemo(
-    () => ({
-      videoSrc: video?.url ?? "",
-      mainCrop,
-      webcam: {
-        enabled: webcamEnabled,
-        source: webcamSource,
-        placement: webcamPlacement,
-        radius: 24,
-      },
-      background: "#000000",
-      durationInFrames,
-      fps: FPS,
-      useOffthread: false,
-    }),
-    [
-      video?.url,
-      mainCrop,
-      webcamEnabled,
-      webcamSource,
-      webcamPlacement,
-      durationInFrames,
-    ]
-  )
+  // Source aspect lock for the webcam body so user sees the same crop we'll render.
+  const webcamLockAspect = video
+    ? placementAspectLock(webcamSource, video)
+    : undefined
+
+  // When webcam source changes, propagate the new aspect to the placement.
+  const onWebcamSourceChange = (next: Rect) => {
+    setWebcamSource(next)
+    if (video) {
+      setWebcamPlacement((p) => syncPlacementAspect(p, next, video))
+    }
+  }
+
+  // Keep placement aspect when the user resizes the placement.
+  const onWebcamPlacementChange = (next: Rect) => {
+    if (!video) {
+      setWebcamPlacement(next)
+      return
+    }
+    setWebcamPlacement(syncPlacementAspect(next, webcamSource, video))
+  }
 
   const handleExport = async () => {
     if (!video) return
@@ -140,6 +177,8 @@ export function VerticalEditor() {
       form.append(
         "props",
         JSON.stringify({
+          sourceWidth: video.width,
+          sourceHeight: video.height,
           mainCrop,
           webcam: {
             enabled: webcamEnabled,
@@ -196,14 +235,12 @@ export function VerticalEditor() {
   return (
     <div className="flex h-full flex-col gap-4 p-4 md:grid md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] md:grid-rows-[1fr_auto] md:gap-6 md:p-6">
       <section className="flex min-h-0 flex-col gap-3">
-        <div className="flex-1 overflow-hidden rounded-xl border bg-black">
-          <div
-            className="relative mx-auto h-full"
-            style={{ aspectRatio: `${video.width} / ${video.height}` }}
-          >
+        <div className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-black">
+          <FitBox aspect={video.width / video.height}>
             <video
+              ref={sourceVideoRef}
               src={video.url}
-              className="absolute inset-0 h-full w-full object-contain"
+              className="absolute inset-0 h-full w-full"
               muted
               loop
               playsInline
@@ -219,17 +256,17 @@ export function VerticalEditor() {
             {webcamEnabled && (
               <RectOverlay
                 rect={webcamSource}
-                onChange={setWebcamSource}
+                onChange={onWebcamSourceChange}
                 accent="accent"
                 label="Webcam"
               />
             )}
-          </div>
+          </FitBox>
         </div>
         <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
           <span className="truncate">
             {video.file.name} · {video.width}×{video.height} ·{" "}
-            {video.duration.toFixed(1)}s
+            {video.duration.toFixed(1)}s · {sourceAspect.toFixed(2)}:1
           </span>
           <Button variant="ghost" size="sm" onClick={reset}>
             <HugeiconsIcon icon={Refresh01Icon} />
@@ -239,33 +276,36 @@ export function VerticalEditor() {
       </section>
 
       <section className="flex min-h-0 flex-col gap-3">
-        <div className="flex-1 overflow-hidden rounded-xl border bg-black">
-          <div className="relative mx-auto h-full" style={{ aspectRatio: "9 / 16" }}>
-            <Player
-              component={VerticalClip}
-              inputProps={inputProps}
-              durationInFrames={durationInFrames}
-              fps={FPS}
-              compositionWidth={OUTPUT_WIDTH}
-              compositionHeight={OUTPUT_HEIGHT}
-              style={{ width: "100%", height: "100%" }}
-              loop
-              autoPlay
-              controls={false}
+        <div className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-black">
+          <FitBox aspect={OUTPUT_ASPECT}>
+            <VerticalPreview
+              videoUrl={video.url}
+              sourceWidth={video.width}
+              sourceHeight={video.height}
+              mainCrop={mainCrop}
+              webcam={{
+                enabled: webcamEnabled,
+                source: webcamSource,
+                placement: webcamPlacement,
+                radius: 24,
+              }}
+              background="#000000"
+              sharedSrcRef={sourceVideoRef}
             />
             {webcamEnabled && (
               <RectOverlay
                 rect={webcamPlacement}
-                onChange={setWebcamPlacement}
+                onChange={onWebcamPlacementChange}
+                aspectLock={webcamLockAspect}
                 accent="accent"
                 label="Place"
               />
             )}
-          </div>
+          </FitBox>
         </div>
         <div className="flex items-center justify-between text-[11px] text-muted-foreground">
           <span>1080 × 1920 · 9:16 preview</span>
-          <span>Live preview</span>
+          <span>Live · synced to source</span>
         </div>
       </section>
 

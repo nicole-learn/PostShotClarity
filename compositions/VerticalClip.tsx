@@ -1,62 +1,106 @@
-import { AbsoluteFill, OffthreadVideo, Video } from "remotion"
+import { AbsoluteFill, OffthreadVideo, useVideoConfig, Video } from "remotion"
 
-import type { VerticalClipProps } from "./types"
+import { computeCropLayout } from "./layout"
+import type { Rect, VerticalClipProps } from "./types"
 
 type Props = VerticalClipProps & { useOffthread?: boolean }
 
+type VideoComponent = typeof Video | typeof OffthreadVideo
+
+function CroppedSourceLayer({
+  videoSrc,
+  sourceWidth,
+  sourceHeight,
+  source,
+  boxWidth,
+  boxHeight,
+  VideoComp,
+  muted,
+}: {
+  videoSrc: string
+  sourceWidth: number
+  sourceHeight: number
+  source: Rect
+  boxWidth: number
+  boxHeight: number
+  VideoComp: VideoComponent
+  muted?: boolean
+}) {
+  const { left, top, width, height } = computeCropLayout({
+    sourceWidth,
+    sourceHeight,
+    source,
+    boxWidth,
+    boxHeight,
+  })
+
+  return (
+    <VideoComp
+      src={videoSrc}
+      muted={muted}
+      style={{ position: "absolute", left, top, width, height }}
+    />
+  )
+}
+
 export const VerticalClip: React.FC<Props> = ({
   videoSrc,
+  sourceWidth,
+  sourceHeight,
   mainCrop,
   webcam,
   background,
   useOffthread = false,
 }) => {
-  if (!videoSrc) return <AbsoluteFill style={{ background }} />
-  const VideoComp = useOffthread ? OffthreadVideo : Video
+  const { width: outW, height: outH } = useVideoConfig()
+  const VideoComp: VideoComponent = useOffthread ? OffthreadVideo : Video
+
+  if (!videoSrc || !sourceWidth || !sourceHeight) {
+    return <AbsoluteFill style={{ background }} />
+  }
+
+  const placement = {
+    x: webcam.placement.x * outW,
+    y: webcam.placement.y * outH,
+    width: webcam.placement.width * outW,
+    height: webcam.placement.height * outH,
+  }
 
   return (
     <AbsoluteFill style={{ background }}>
       <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-        <VideoComp
-          src={videoSrc}
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: `${100 / mainCrop.width}%`,
-            height: `${100 / mainCrop.height}%`,
-            objectFit: "fill",
-            transform: `translate(${-mainCrop.x * 100}%, ${-mainCrop.y * 100}%)`,
-            transformOrigin: "0 0",
-          }}
+        <CroppedSourceLayer
+          videoSrc={videoSrc}
+          sourceWidth={sourceWidth}
+          sourceHeight={sourceHeight}
+          source={mainCrop}
+          boxWidth={outW}
+          boxHeight={outH}
+          VideoComp={VideoComp}
         />
       </div>
       {webcam.enabled && (
         <div
           style={{
             position: "absolute",
-            left: `${webcam.placement.x * 100}%`,
-            top: `${webcam.placement.y * 100}%`,
-            width: `${webcam.placement.width * 100}%`,
-            height: `${webcam.placement.height * 100}%`,
+            left: placement.x,
+            top: placement.y,
+            width: placement.width,
+            height: placement.height,
             overflow: "hidden",
             borderRadius: webcam.radius,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
           }}
         >
-          <VideoComp
-            src={videoSrc}
+          <CroppedSourceLayer
+            videoSrc={videoSrc}
+            sourceWidth={sourceWidth}
+            sourceHeight={sourceHeight}
+            source={webcam.source}
+            boxWidth={placement.width}
+            boxHeight={placement.height}
+            VideoComp={VideoComp}
             muted
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: `${100 / webcam.source.width}%`,
-              height: `${100 / webcam.source.height}%`,
-              objectFit: "fill",
-              transform: `translate(${-webcam.source.x * 100}%, ${-webcam.source.y * 100}%)`,
-              transformOrigin: "0 0",
-            }}
           />
         </div>
       )}

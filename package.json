@@ -21,6 +21,7 @@
     "@hugeicons/react": "^1.1.6",
     "@remotion/bundler": "^4.0.448",
     "@remotion/cli": "^4.0.448",
+    "@remotion/lambda": "^4.0.448",
     "@remotion/player": "^4.0.448",
     "@remotion/renderer": "^4.0.448",
     "class-variance-authority": "^0.7.1",
