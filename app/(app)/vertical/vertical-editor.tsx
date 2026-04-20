@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Dropzone } from "@/components/dropzone"
 import { FitBox } from "@/components/fit-box"
+import { NativeVideoScrubber } from "@/components/native-video-scrubber"
 import { RectOverlay } from "@/components/rect-overlay"
 import { VerticalPreview } from "@/components/vertical-preview"
 import { ThirdsOverlay } from "@/components/thirds-overlay"
@@ -390,7 +391,7 @@ export function VerticalEditor() {
 
   return (
     <div className="flex h-full flex-col gap-4 p-4 md:grid md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] md:grid-rows-[1fr_auto] md:gap-6 md:p-6">
-      <section className="min-h-0 overflow-hidden rounded-xl border bg-black">
+      <section className="relative min-h-0 overflow-hidden rounded-xl border bg-black">
         <FitBox aspect={video.width / video.height}>
           <video
             ref={sourceVideoRef}
@@ -418,6 +419,10 @@ export function VerticalEditor() {
             />
           )}
         </FitBox>
+        <NativeVideoScrubber
+          videoRef={sourceVideoRef}
+          className="absolute inset-x-3 bottom-3 z-20"
+        />
       </section>
 
       <section className="min-h-0 overflow-hidden rounded-xl border bg-black">
