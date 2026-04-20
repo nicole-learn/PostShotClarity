@@ -56,6 +56,11 @@ type UploadUrlResponse = {
 
 const PREVIEW_FPS = DEFAULT_CAPTION_FPS
 
+// Hoisted so the Player doesn't receive a new `style` object reference on every
+// parent re-render (scrubber updates currentFrame 30x/sec — without stable refs,
+// the Player thrashes its prop diff and triggers <Video> resync seeks).
+const PLAYER_STYLE = { width: "100%", height: "100%" } as const
+
 function formatTime(t: number) {
   if (!isFinite(t) || t < 0) return "0:00.0"
   const m = Math.floor(t / 60)
@@ -503,6 +508,27 @@ export function CaptionsGenerator() {
     }
   }, [videoUrl, videoWidth, videoHeight])
 
+  // Memoize so `inputProps` only changes when the underlying caption data does,
+  // not when the scrubber's currentFrame state re-renders the parent. A new
+  // object literal every frame was forcing the Player's composition to re-diff
+  // (and sometimes re-sync the <Video>), which in turn seeked the video backward
+  // across Sequence boundaries and remounted caption chunks — replaying the
+  // mount animation and making the caption appear to "play twice."
+  //
+  // This must live above the early return below so React sees the same hook
+  // order whether or not a file is loaded (Rules of Hooks).
+  const inputProps = React.useMemo<CaptionsProps>(
+    () => ({
+      videoSrc: videoUrl ?? "",
+      lines,
+      style,
+      layout,
+      animation,
+      presetIndex,
+    }),
+    [videoUrl, lines, style, layout, animation, presetIndex]
+  )
+
   if (!file || !videoUrl) {
     return (
       <div
@@ -539,15 +565,6 @@ export function CaptionsGenerator() {
   const compositionHeight = Math.max(2, Math.round((rawH * previewScale) / 2) * 2)
   const probeReady = videoWidth > 0 && videoHeight > 0
   const hasLines = lines.length > 0
-
-  const inputProps: CaptionsProps = {
-    videoSrc: videoUrl,
-    lines,
-    style,
-    layout,
-    animation,
-    presetIndex,
-  }
 
   return (
     <div className="flex h-full flex-col gap-4 p-4 md:grid md:grid-cols-[150px_170px_1fr_320px] md:grid-rows-[1fr_auto] md:gap-4 md:p-5">
@@ -644,7 +661,7 @@ export function CaptionsGenerator() {
                 compositionWidth={compositionWidth}
                 compositionHeight={compositionHeight}
                 fps={PREVIEW_FPS}
-                style={{ width: "100%", height: "100%" }}
+                style={PLAYER_STYLE}
                 clickToPlay={false}
                 controls={false}
                 loop

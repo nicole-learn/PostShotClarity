@@ -463,7 +463,7 @@ export function MemeSoundsEditor() {
             durationInFrames={durationInFrames}
             fps={FPS}
             style={{ width: "100%", height: "100%" }}
-            clickToPlay
+            clickToPlay={false}
             loop
           />
         </div>
