@@ -11,7 +11,8 @@
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
     "remotion:studio": "remotion studio",
-    "remotion:render": "remotion render"
+    "remotion:render": "remotion render",
+    "setup:cors": "node scripts/configure-s3-cors.mjs"
   },
   "dependencies": {
     "@ffmpeg/core": "^0.12.10",

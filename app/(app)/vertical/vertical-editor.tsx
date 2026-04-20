@@ -170,37 +170,102 @@ export function VerticalEditor() {
   const handleExport = async () => {
     if (!video) return
     setExporting(true)
-    setExportProgress("Uploading…")
+    setExportProgress("Preparing upload…")
     try {
-      const form = new FormData()
-      form.append("file", video.file, video.file.name)
-      form.append(
-        "props",
-        JSON.stringify({
-          sourceWidth: video.width,
-          sourceHeight: video.height,
-          mainCrop,
-          webcam: {
-            enabled: webcamEnabled,
-            source: webcamSource,
-            placement: webcamPlacement,
-            radius: 24,
-          },
-          background: "#000000",
-          durationInFrames,
-          fps: FPS,
-        })
-      )
-      setExportProgress("Rendering…")
-      const res = await fetch("/api/render-vertical", {
+      const presignRes = await fetch("/api/render-vertical/upload-url", {
         method: "POST",
-        body: form,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: video.file.name,
+          contentType: video.file.type || "video/mp4",
+        }),
       })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `Render failed (${res.status})`)
+      if (!presignRes.ok) {
+        throw new Error((await presignRes.text()) || "Failed to get upload URL")
       }
-      const blob = await res.blob()
+      const { uploadUrl, key, contentType } = (await presignRes.json()) as {
+        uploadUrl: string
+        key: string
+        contentType: string
+      }
+
+      setExportProgress("Uploading video…")
+      const putRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": contentType },
+        body: video.file,
+      })
+      if (!putRes.ok) {
+        throw new Error(`Upload failed (${putRes.status})`)
+      }
+
+      setExportProgress("Starting render…")
+      const startRes = await fetch("/api/render-vertical", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key,
+          props: {
+            sourceWidth: video.width,
+            sourceHeight: video.height,
+            mainCrop,
+            webcam: {
+              enabled: webcamEnabled,
+              source: webcamSource,
+              placement: webcamPlacement,
+              radius: 24,
+            },
+            background: "#000000",
+            durationInFrames,
+            fps: FPS,
+          },
+        }),
+      })
+      if (!startRes.ok) {
+        throw new Error((await startRes.text()) || "Failed to start render")
+      }
+      const { renderId, bucketName, inputKey } = (await startRes.json()) as {
+        renderId: string
+        bucketName: string
+        inputKey: string
+      }
+
+      const progressQuery = new URLSearchParams({
+        renderId,
+        bucketName,
+        inputKey,
+      }).toString()
+
+      let outputUrl: string | null = null
+      while (!outputUrl) {
+        await new Promise((r) => setTimeout(r, 2000))
+        const progRes = await fetch(
+          `/api/render-vertical/progress?${progressQuery}`
+        )
+        if (!progRes.ok) {
+          throw new Error(`Progress check failed (${progRes.status})`)
+        }
+        const data = (await progRes.json()) as {
+          done: boolean
+          outputUrl?: string
+          overallProgress?: number
+          error?: string
+        }
+        if (data.error) throw new Error(data.error)
+        if (data.done && data.outputUrl) {
+          outputUrl = data.outputUrl
+          break
+        }
+        const pct = Math.round((data.overallProgress ?? 0) * 100)
+        setExportProgress(`Rendering… ${pct}%`)
+      }
+
+      setExportProgress("Downloading…")
+      const fileRes = await fetch(outputUrl)
+      if (!fileRes.ok) {
+        throw new Error(`Failed to download output (${fileRes.status})`)
+      }
+      const blob = await fileRes.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
