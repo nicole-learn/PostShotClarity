@@ -10,6 +10,38 @@ export type CaptionChunk = {
 }
 
 /**
+ * Rescale ASR word timings so they fit exactly inside `[line.start, line.end]`.
+ * The UI lets users edit line.start/line.end without touching line.words, so
+ * without this the chunks would keep showing at the original ASR timings and
+ * ignore the user's edits in the right-hand captions panel.
+ */
+function rescaleWordsToLine(
+  words: TranscribedWord[],
+  line: CaptionLine
+): TranscribedWord[] {
+  if (words.length === 0) return words
+  const origStart = words[0].start
+  const origEnd = words[words.length - 1].end
+  const origSpan = origEnd - origStart
+  const newSpan = Math.max(0.01, line.end - line.start)
+  if (origSpan <= 0.001) {
+    const per = newSpan / words.length
+    return words.map((w, i) => ({
+      ...w,
+      start: line.start + i * per,
+      end: line.start + (i + 1) * per,
+    }))
+  }
+  const rescale = (t: number) =>
+    line.start + ((t - origStart) / origSpan) * newSpan
+  return words.map((w) => ({
+    ...w,
+    start: rescale(w.start),
+    end: rescale(w.end),
+  }))
+}
+
+/**
  * Pack each caption line's words into chunks whose joined text stays under
  * `maxChars` (spaces included). When `maxChars` is 0, each line renders as
  * a single chunk. Chunks are kept on screen until the next chunk takes
@@ -30,7 +62,7 @@ export function chunkLines(
       text: line.text,
       start: line.start,
       end: line.end,
-      words: line.words,
+      words: rescaleWordsToLine(line.words, line),
       indexInLine: 0,
     }))
   }
@@ -49,12 +81,13 @@ export function chunkLines(
     const matches =
       origJoined === curJoined && line.words.length === tokens.length
 
+    const rescaledWords = matches ? rescaleWordsToLine(line.words, line) : []
     const duration = Math.max(0.05, line.end - line.start)
     const perToken = duration / tokens.length
     const slotStart = (i: number) =>
-      matches ? line.words[i].start : line.start + i * perToken
+      matches ? rescaledWords[i].start : line.start + i * perToken
     const slotEnd = (i: number) =>
-      matches ? line.words[i].end : line.start + (i + 1) * perToken
+      matches ? rescaledWords[i].end : line.start + (i + 1) * perToken
 
     // Greedy pack: take words while they still fit within maxChars
     // (including a space before each subsequent word). A single over-long

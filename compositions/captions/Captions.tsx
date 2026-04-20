@@ -46,17 +46,6 @@ const STYLE_BASE_FONT: Record<CaptionStyle, number> = {
   outlined: 0.09,
 }
 
-const STYLE_CHAR_SCALE: Record<CaptionStyle, number> = {
-  impact: 1,
-  outlined: 1.04,
-  shadow: 1.07,
-  gradient: 1.11,
-  pop: 1.11,
-  neon: 1.26,
-  karaoke: 1.48,
-  clean: 1.67,
-}
-
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3)
 
 const IDLE_ANIM = { opacity: 1, transform: "none" } as const
@@ -79,11 +68,8 @@ export const Captions: React.FC<CaptionsProps> = ({
   const effectiveMaxChars = React.useMemo(() => {
     // "Auto" (slider = 0) → one word per chunk for a punchy, modern feel.
     if (effective.maxCharsPerLine <= 0) return 1
-    return Math.max(
-      1,
-      Math.round(effective.maxCharsPerLine * STYLE_CHAR_SCALE[style])
-    )
-  }, [effective.maxCharsPerLine, style])
+    return Math.max(1, Math.round(effective.maxCharsPerLine))
+  }, [effective.maxCharsPerLine])
 
   const chunks = React.useMemo(
     () => chunkLines(lines, effectiveMaxChars),
