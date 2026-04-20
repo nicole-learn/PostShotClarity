@@ -28,3 +28,21 @@ export type VerticalClipProps = {
 export const OUTPUT_WIDTH = 1080
 export const OUTPUT_HEIGHT = 1920
 export const OUTPUT_ASPECT = OUTPUT_WIDTH / OUTPUT_HEIGHT
+
+export type PlacedSound = {
+  id: string
+  url: string
+  name: string
+  startFrame: number
+  durationInFrames: number
+  volume: number
+}
+
+export type MemeSoundsClipProps = {
+  videoSrc: string
+  videoWidth: number
+  videoHeight: number
+  sounds: PlacedSound[]
+  durationInFrames: number
+  fps: number
+}

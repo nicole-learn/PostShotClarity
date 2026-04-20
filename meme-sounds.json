@@ -1,38 +1,138 @@
 [
   {
+    "name": "among-us-role-reveal",
+    "url": "/meme-sounds/among-us-role-reveal.mp3"
+  },
+  {
+    "name": "anime-nani",
+    "url": "/meme-sounds/anime-nani.mp3"
+  },
+  {
     "name": "anime-wow-reaction",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/assets/sfx/1768879371262-s6bzgh.mp3"
+    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768879371262-s6bzgh.mp3"
+  },
+  {
+    "name": "ara-ara",
+    "url": "/meme-sounds/ara-ara.mp3"
+  },
+  {
+    "name": "augh",
+    "url": "/meme-sounds/augh.mp3"
   },
   {
     "name": "bruh-meme-vocal",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/assets/sfx/1768879503215-bm52db.mp3"
+    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768879503215-bm52db.mp3"
   },
   {
     "name": "cartoonish-flexatone-question",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/assets/sfx/1768546387175-x67iji.wav"
+    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768546387175-x67iji.wav"
   },
   {
     "name": "classic-gaming-punch-impact",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/assets/sfx/1768879511084-hwp1fn.mp3"
+    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768879511084-hwp1fn.mp3"
+  },
+  {
+    "name": "discord-notification",
+    "url": "/meme-sounds/discord-notification.mp3"
   },
   {
     "name": "dramatic-anime-shock-sting",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/assets/sfx/1768346339062-apv1ha.wav"
+    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768346339062-apv1ha.wav"
+  },
+  {
+    "name": "emotional-damage",
+    "url": "/meme-sounds/emotional-damage.mp3"
+  },
+  {
+    "name": "fart-meme-sound",
+    "url": "/meme-sounds/fart-meme-sound.mp3"
+  },
+  {
+    "name": "gta-san-andreas-ah-shit",
+    "url": "/meme-sounds/gta-san-andreas-ah-shit.mp3"
+  },
+  {
+    "name": "gta-wasted",
+    "url": "/meme-sounds/gta-wasted.mp3"
+  },
+  {
+    "name": "hello-there",
+    "url": "/meme-sounds/hello-there.mp3"
+  },
+  {
+    "name": "illuminati-confirmed",
+    "url": "/meme-sounds/illuminati-confirmed.mp3"
   },
   {
     "name": "joe-budden-gunshot-impact",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/assets/sfx/1768879481948-a8ccmn.mp3"
+    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768879481948-a8ccmn.mp3"
   },
   {
     "name": "kids-cheering-yay-applause",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/assets/sfx/1768879496022-mqonub.mp3"
+    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768879496022-mqonub.mp3"
+  },
+  {
+    "name": "mario-coin",
+    "url": "/meme-sounds/mario-coin.mp3"
+  },
+  {
+    "name": "mario-death",
+    "url": "/meme-sounds/mario-death.mp3"
+  },
+  {
+    "name": "mario-jump",
+    "url": "/meme-sounds/mario-jump.mp3"
+  },
+  {
+    "name": "metal-pipe-falling",
+    "url": "/meme-sounds/metal-pipe-falling.mp3"
+  },
+  {
+    "name": "mlg-airhorn",
+    "url": "/meme-sounds/mlg-airhorn.mp3"
+  },
+  {
+    "name": "nokia-ringtone",
+    "url": "/meme-sounds/nokia-ringtone.mp3"
+  },
+  {
+    "name": "oof-roblox",
+    "url": "/meme-sounds/oof-roblox.mp3"
   },
   {
     "name": "rizz-guitar-slide-accent",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/assets/sfx/1768433085109-vc47pu.wav"
+    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768433085109-vc47pu.wav"
+  },
+  {
+    "name": "rizz-sound-effect",
+    "url": "/meme-sounds/rizz-sound-effect.mp3"
+  },
+  {
+    "name": "sad-violin",
+    "url": "/meme-sounds/sad-violin.mp3"
+  },
+  {
+    "name": "taco-bell-bong",
+    "url": "/meme-sounds/taco-bell-bong.mp3"
+  },
+  {
+    "name": "to-be-continued",
+    "url": "/meme-sounds/to-be-continued.mp3"
+  },
+  {
+    "name": "vine",
+    "url": "/meme-sounds/vine.mp3"
   },
   {
     "name": "vocal-confused-huh",
-    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/assets/sfx/1768879489277-so7gro.mp3"
+    "url": "https://jzwhlkkxsbvsbbvwzjia.supabase.co/storage/v1/object/public/workflow-assets/sfx/1768879489277-so7gro.mp3"
+  },
+  {
+    "name": "windows-xp-error",
+    "url": "/meme-sounds/windows-xp-error.mp3"
+  },
+  {
+    "name": "wow-anime",
+    "url": "/meme-sounds/wow-anime.mp3"
   }
 ]

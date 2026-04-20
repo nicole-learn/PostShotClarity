@@ -1,3 +1,5 @@
+import { CaptionsGenerator } from "./captions-generator"
+
 export default function CaptionsPage() {
-  return null
+  return <CaptionsGenerator />
 }

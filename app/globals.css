@@ -47,6 +47,7 @@
     --color-tool-vertical: var(--tool-vertical);
     --color-tool-captions: var(--tool-captions);
     --color-tool-sounds: var(--tool-sounds);
+    --color-tool-library: var(--tool-library);
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -86,6 +87,7 @@
     --tool-vertical: oklch(0.6 0.118 184.704);
     --tool-captions: oklch(0.72 0.16 150);
     --tool-sounds: oklch(0.68 0.14 300);
+    --tool-library: oklch(0.68 0.14 240);
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
@@ -128,6 +130,7 @@
     --tool-vertical: oklch(0.72 0.12 184);
     --tool-captions: oklch(0.76 0.16 150);
     --tool-sounds: oklch(0.72 0.14 300);
+    --tool-library: oklch(0.72 0.14 240);
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);

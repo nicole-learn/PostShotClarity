@@ -1,3 +1,5 @@
+import { MemeSoundsEditor } from "./meme-sounds-editor"
+
 export default function MemeSoundsPage() {
-  return null
+  return <MemeSoundsEditor />
 }

@@ -3,6 +3,7 @@ import {
   ClosedCaptionIcon,
   Gif01Icon,
   HappyIcon,
+  LibraryIcon,
   MusicNote01Icon,
 } from "@hugeicons/core-free-icons"
 
@@ -68,6 +69,16 @@ export const tools: Tool[] = [
     icon: MusicNote01Icon,
     hue: "var(--tool-sounds)",
     shortcut: "5",
+  },
+  {
+    slug: "meme-library",
+    name: "Meme Library",
+    short: "Library",
+    tagline: "Browse and download reaction memes.",
+    blurb: "Browse and download reaction memes.",
+    icon: LibraryIcon,
+    hue: "var(--tool-library)",
+    shortcut: "6",
   },
 ]
 
