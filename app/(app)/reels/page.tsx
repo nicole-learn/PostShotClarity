@@ -5,9 +5,10 @@ import { ComingSoon } from "@/components/coming-soon"
 export default function ReelsPage() {
   return (
     <ComingSoon
-      title="Reel Editing"
+      slug="reels"
+      title="Stitch it into a reel."
       icon={Film01Icon}
-      description="Stitch, caption and polish a reel in one place. We are still cooking this one."
+      description="Stitch, caption, and polish clips into a reel without leaving the tab. Still cooking."
     />
   )
 }

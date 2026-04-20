@@ -5,9 +5,10 @@ import { ComingSoon } from "@/components/coming-soon"
 export default function ClipsPage() {
   return (
     <ComingSoon
-      title="Clip Searching"
+      slug="clips"
+      title="Find the moment."
       icon={Search01Icon}
-      description="Find the moment you need across hundreds of hours of VODs. We are still cooking this one."
+      description="Search hundreds of hours of VODs for the exact clip you're looking for. Still cooking."
     />
   )
 }

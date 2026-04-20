@@ -5,6 +5,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import {
   CameraVideoIcon,
   Download01Icon,
+  Grid02Icon,
   Refresh01Icon,
   VideoReplayIcon,
 } from "@hugeicons/core-free-icons"
@@ -14,8 +15,12 @@ import { Dropzone } from "@/components/dropzone"
 import { FitBox } from "@/components/fit-box"
 import { RectOverlay } from "@/components/rect-overlay"
 import { VerticalPreview } from "@/components/vertical-preview"
+import { ThirdsOverlay } from "@/components/thirds-overlay"
+import { StagedProgress } from "@/components/staged-progress"
+import { useToast } from "@/components/toast"
+import { pushRecent } from "@/lib/recent"
 import { cn } from "@/lib/utils"
-import { OUTPUT_ASPECT, OUTPUT_HEIGHT, OUTPUT_WIDTH, type Rect } from "@/compositions/types"
+import { OUTPUT_ASPECT, OUTPUT_WIDTH, OUTPUT_HEIGHT, type Rect } from "@/compositions/types"
 
 const FPS = 30
 
@@ -46,10 +51,7 @@ function loadVideo(file: File): Promise<VideoMeta> {
   })
 }
 
-/** Default 9:16 crop that fills the source vertically for a horizontal video. */
 function defaultMainCrop(sourceAspect: number): Rect {
-  // Pixel aspect of the normalized crop must equal OUTPUT_ASPECT (9/16).
-  // rect.width/rect.height = OUTPUT_ASPECT / sourceAspect
   const ratio = sourceAspect / OUTPUT_ASPECT
   const width = Math.min(1, 1 / ratio)
   const height = Math.min(1, width * ratio)
@@ -61,28 +63,16 @@ function defaultMainCrop(sourceAspect: number): Rect {
   }
 }
 
-/**
- * Webcam source pixel aspect in the original video coords.
- * Used to lock the placement rect's aspect so the webcam never gets squished.
- */
 function webcamPixelAspect(source: Rect, meta: VideoMeta) {
   return (source.width * meta.width) / Math.max(1, source.height * meta.height)
 }
 
-/**
- * Placement aspect lock, expressed as a pixel aspect for the OUTPUT canvas.
- * The rect-overlay uses aspectLock as desired pixel aspect of the rect.
- */
 function placementAspectLock(source: Rect, meta: VideoMeta) {
-  // Placement pixel aspect == webcam source pixel aspect (no distortion).
   return webcamPixelAspect(source, meta)
 }
 
-/** Adjust placement rect so its pixel aspect matches the webcam source aspect. */
 function syncPlacementAspect(placement: Rect, source: Rect, meta: VideoMeta): Rect {
   const targetAspect = webcamPixelAspect(source, meta)
-  // ph * OUT_H should match pw * OUT_W / targetAspect
-  // => ph = pw * (OUTPUT_WIDTH / OUTPUT_HEIGHT) / targetAspect
   const newHeight = Math.min(
     1,
     (placement.width * (OUTPUT_WIDTH / OUTPUT_HEIGHT)) / targetAspect
@@ -109,6 +99,7 @@ export function VerticalEditor() {
     height: 1,
   })
   const [webcamEnabled, setWebcamEnabled] = React.useState(false)
+  const [showThirds, setShowThirds] = React.useState(false)
   const [webcamSource, setWebcamSource] = React.useState<Rect>({
     x: 0.02,
     y: 0.65,
@@ -122,35 +113,50 @@ export function VerticalEditor() {
     height: 0.26,
   })
   const [exporting, setExporting] = React.useState(false)
-  const [exportProgress, setExportProgress] = React.useState<string | null>(null)
+  const [stageIndex, setStageIndex] = React.useState(0)
+  const [stageProgress, setStageProgress] = React.useState(0)
+  const { push } = useToast()
+
+  const stages = React.useMemo(
+    () => [
+      { label: "Uploading video", weight: 1 },
+      { label: "Starting render", weight: 0.5 },
+      { label: "Rendering", weight: 6 },
+      { label: "Downloading", weight: 1 },
+    ],
+    []
+  )
 
   const sourceAspect = video ? video.width / video.height : 16 / 9
 
   const handleUpload = async (file: File) => {
-    const meta = await loadVideo(file)
-    setVideo(meta)
-    setMainCrop(defaultMainCrop(meta.width / meta.height))
-    // Seed placement aspect to match the default webcam source aspect.
-    setWebcamPlacement((p) => syncPlacementAspect(p, webcamSource, meta))
+    try {
+      const meta = await loadVideo(file)
+      setVideo(meta)
+      setMainCrop(defaultMainCrop(meta.width / meta.height))
+      setWebcamPlacement((p) => syncPlacementAspect(p, webcamSource, meta))
+      pushRecent({ tool: "vertical", name: file.name, size: file.size })
+    } catch {
+      push({ message: "That clip couldn't be read", variant: "error" })
+    }
   }
 
   const reset = () => {
     if (video) URL.revokeObjectURL(video.url)
     setVideo(null)
     setWebcamEnabled(false)
-    setExportProgress(null)
+    setStageIndex(0)
+    setStageProgress(0)
   }
 
   const durationInFrames = video
     ? Math.max(1, Math.floor(video.duration * FPS))
     : FPS
 
-  // Source aspect lock for the webcam body so user sees the same crop we'll render.
   const webcamLockAspect = video
     ? placementAspectLock(webcamSource, video)
     : undefined
 
-  // When webcam source changes, propagate the new aspect to the placement.
   const onWebcamSourceChange = (next: Rect) => {
     setWebcamSource(next)
     if (video) {
@@ -158,7 +164,6 @@ export function VerticalEditor() {
     }
   }
 
-  // Keep placement aspect when the user resizes the placement.
   const onWebcamPlacementChange = (next: Rect) => {
     if (!video) {
       setWebcamPlacement(next)
@@ -170,7 +175,8 @@ export function VerticalEditor() {
   const handleExport = async () => {
     if (!video) return
     setExporting(true)
-    setExportProgress("Preparing upload…")
+    setStageIndex(0)
+    setStageProgress(0)
     try {
       const presignRes = await fetch("/api/render-vertical/upload-url", {
         method: "POST",
@@ -180,26 +186,23 @@ export function VerticalEditor() {
           contentType: video.file.type || "video/mp4",
         }),
       })
-      if (!presignRes.ok) {
-        throw new Error((await presignRes.text()) || "Failed to get upload URL")
-      }
+      if (!presignRes.ok) throw new Error("Couldn't get upload URL")
       const { uploadUrl, key, contentType } = (await presignRes.json()) as {
         uploadUrl: string
         key: string
         contentType: string
       }
 
-      setExportProgress("Uploading video…")
+      setStageProgress(0.5)
       const putRes = await fetch(uploadUrl, {
         method: "PUT",
         headers: { "Content-Type": contentType },
         body: video.file,
       })
-      if (!putRes.ok) {
-        throw new Error(`Upload failed (${putRes.status})`)
-      }
+      if (!putRes.ok) throw new Error("Upload failed")
 
-      setExportProgress("Starting render…")
+      setStageIndex(1)
+      setStageProgress(0)
       const startRes = await fetch("/api/render-vertical", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -221,15 +224,15 @@ export function VerticalEditor() {
           },
         }),
       })
-      if (!startRes.ok) {
-        throw new Error((await startRes.text()) || "Failed to start render")
-      }
+      if (!startRes.ok) throw new Error("Couldn't start render")
       const { renderId, bucketName, inputKey } = (await startRes.json()) as {
         renderId: string
         bucketName: string
         inputKey: string
       }
 
+      setStageIndex(2)
+      setStageProgress(0)
       const progressQuery = new URLSearchParams({
         renderId,
         bucketName,
@@ -242,9 +245,7 @@ export function VerticalEditor() {
         const progRes = await fetch(
           `/api/render-vertical/progress?${progressQuery}`
         )
-        if (!progRes.ok) {
-          throw new Error(`Progress check failed (${progRes.status})`)
-        }
+        if (!progRes.ok) throw new Error("Progress check failed")
         const data = (await progRes.json()) as {
           done: boolean
           outputUrl?: string
@@ -256,16 +257,15 @@ export function VerticalEditor() {
           outputUrl = data.outputUrl
           break
         }
-        const pct = Math.round((data.overallProgress ?? 0) * 100)
-        setExportProgress(`Rendering… ${pct}%`)
+        setStageProgress(data.overallProgress ?? 0)
       }
 
-      setExportProgress("Downloading…")
+      setStageIndex(3)
+      setStageProgress(0)
       const fileRes = await fetch(outputUrl)
-      if (!fileRes.ok) {
-        throw new Error(`Failed to download output (${fileRes.status})`)
-      }
+      if (!fileRes.ok) throw new Error("Download failed")
       const blob = await fileRes.blob()
+      setStageProgress(1)
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
@@ -274,10 +274,13 @@ export function VerticalEditor() {
       a.click()
       a.remove()
       URL.revokeObjectURL(url)
-      setExportProgress(null)
+      push({ message: "Vertical clip downloaded", variant: "success" })
     } catch (err) {
-      console.error(err)
-      setExportProgress(err instanceof Error ? err.message : "Render failed")
+      push({
+        message:
+          err instanceof Error ? err.message : "Render failed — try again",
+        variant: "error",
+      })
     } finally {
       setExporting(false)
     }
@@ -329,7 +332,7 @@ export function VerticalEditor() {
           </FitBox>
         </div>
         <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span className="truncate">
+          <span className="truncate tnum">
             {video.file.name} · {video.width}×{video.height} ·{" "}
             {video.duration.toFixed(1)}s · {sourceAspect.toFixed(2)}:1
           </span>
@@ -357,6 +360,7 @@ export function VerticalEditor() {
               background="#000000"
               sharedSrcRef={sourceVideoRef}
             />
+            {showThirds && <ThirdsOverlay />}
             {webcamEnabled && (
               <RectOverlay
                 rect={webcamPlacement}
@@ -368,22 +372,35 @@ export function VerticalEditor() {
             )}
           </FitBox>
         </div>
-        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-          <span>1080 × 1920 · 9:16 preview</span>
-          <span>Live · synced to source</span>
+        <div className="flex items-center justify-between text-[11px] text-muted-foreground tnum">
+          <span>1080 × 1920 · 9:16</span>
+          <span>Live · synced</span>
         </div>
       </section>
 
       <section className="col-span-full flex flex-wrap items-center justify-between gap-3 border-t pt-3 md:border-0 md:pt-0">
-        <WebcamToggle
-          enabled={webcamEnabled}
-          onToggle={() => setWebcamEnabled((v) => !v)}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <IconToggle
+            active={showThirds}
+            onClick={() => setShowThirds((v) => !v)}
+            icon={Grid02Icon}
+            label={showThirds ? "Thirds on" : "Thirds"}
+          />
+          <IconToggle
+            active={webcamEnabled}
+            onClick={() => setWebcamEnabled((v) => !v)}
+            icon={CameraVideoIcon}
+            label={webcamEnabled ? "Webcam on" : "Webcam"}
+          />
+        </div>
         <div className="flex items-center gap-3">
-          {exportProgress && (
-            <span className="text-xs text-muted-foreground">
-              {exportProgress}
-            </span>
+          {exporting && (
+            <StagedProgress
+              stages={stages}
+              currentIndex={stageIndex}
+              progressInStage={stageProgress}
+              className="w-48"
+            />
           )}
           <Button size="lg" onClick={handleExport} disabled={exporting}>
             <HugeiconsIcon icon={Download01Icon} />
@@ -395,27 +412,31 @@ export function VerticalEditor() {
   )
 }
 
-function WebcamToggle({
-  enabled,
-  onToggle,
+function IconToggle({
+  active,
+  onClick,
+  icon,
+  label,
 }: {
-  enabled: boolean
-  onToggle: () => void
+  active: boolean
+  onClick: () => void
+  icon: typeof Grid02Icon
+  label: string
 }) {
   return (
     <button
       type="button"
-      onClick={onToggle}
-      aria-pressed={enabled}
+      onClick={onClick}
+      aria-pressed={active}
       className={cn(
-        "flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-medium transition-colors",
-        enabled
+        "flex h-9 items-center gap-1.5 rounded-md border px-2.5 text-[11px] font-medium transition-colors",
+        active
           ? "border-foreground/20 bg-foreground text-background"
-          : "border-border bg-transparent text-foreground hover:bg-muted"
+          : "border-border bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
       )}
     >
-      <HugeiconsIcon icon={CameraVideoIcon} size={14} />
-      Webcam overlay {enabled ? "on" : "off"}
+      <HugeiconsIcon icon={icon} size={13} strokeWidth={1.75} />
+      {label}
     </button>
   )
 }

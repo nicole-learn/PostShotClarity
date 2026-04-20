@@ -11,6 +11,9 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Dropzone } from "@/components/dropzone"
+import { AnimatedNumber } from "@/components/animated-number"
+import { useToast } from "@/components/toast"
+import { pushRecent } from "@/lib/recent"
 import { cn } from "@/lib/utils"
 
 type Preset = {
@@ -30,7 +33,10 @@ const PRESETS: Preset[] = [
 
 type Rendered = { preset: Preset; dataUrl: string; blob: Blob }
 
-async function renderSize(source: HTMLImageElement, size: number): Promise<Blob> {
+async function renderSize(
+  source: HTMLImageElement,
+  size: number
+): Promise<Blob> {
   const canvas = document.createElement("canvas")
   canvas.width = size
   canvas.height = size
@@ -45,7 +51,10 @@ async function renderSize(source: HTMLImageElement, size: number): Promise<Blob>
   ctx.drawImage(source, (size - w) / 2, (size - h) / 2, w, h)
 
   return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Encode failed"))), "image/png")
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error("Encode failed"))),
+      "image/png"
+    )
   })
 }
 
@@ -70,28 +79,37 @@ function downloadBlob(blob: Blob, name: string) {
 }
 
 export function EmotesFormatter() {
-  const [source, setSource] = React.useState<{ file: File; url: string } | null>(null)
+  const [source, setSource] = React.useState<{ file: File; url: string } | null>(
+    null
+  )
   const [rendered, setRendered] = React.useState<Rendered[]>([])
   const [working, setWorking] = React.useState(false)
+  const { push } = useToast()
 
-  const handleFile = React.useCallback(async (file: File) => {
-    setWorking(true)
-    try {
-      const img = await loadImage(file)
-      const url = img.src
-      const results = await Promise.all(
-        PRESETS.map(async (preset) => {
-          const blob = await renderSize(img, preset.size)
-          const dataUrl = URL.createObjectURL(blob)
-          return { preset, dataUrl, blob }
-        })
-      )
-      setSource({ file, url })
-      setRendered(results)
-    } finally {
-      setWorking(false)
-    }
-  }, [])
+  const handleFile = React.useCallback(
+    async (file: File) => {
+      setWorking(true)
+      try {
+        const img = await loadImage(file)
+        const url = img.src
+        const results = await Promise.all(
+          PRESETS.map(async (preset) => {
+            const blob = await renderSize(img, preset.size)
+            const dataUrl = URL.createObjectURL(blob)
+            return { preset, dataUrl, blob }
+          })
+        )
+        setSource({ file, url })
+        setRendered(results)
+        pushRecent({ tool: "emotes", name: file.name, size: file.size })
+      } catch {
+        push({ message: "That image couldn't be read", variant: "error" })
+      } finally {
+        setWorking(false)
+      }
+    },
+    [push]
+  )
 
   const reset = () => {
     rendered.forEach((r) => URL.revokeObjectURL(r.dataUrl))
@@ -108,6 +126,7 @@ export function EmotesFormatter() {
     })
     const out = await zip.generateAsync({ type: "blob" })
     downloadBlob(out, `${baseName}-emotes.zip`)
+    push({ message: "Emote pack downloaded", variant: "success" })
   }
 
   if (!source) {
@@ -124,6 +143,8 @@ export function EmotesFormatter() {
     )
   }
 
+  const totalKb = rendered.reduce((acc, r) => acc + r.blob.size, 0) / 1024
+
   return (
     <div className="flex h-full flex-col gap-4 p-4 md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] md:gap-6 md:p-6">
       <div className="flex min-h-0 flex-col gap-3">
@@ -136,7 +157,13 @@ export function EmotesFormatter() {
           />
         </div>
         <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span className="truncate">{source.file.name}</span>
+          <span className="truncate">
+            {source.file.name}
+            <span className="mx-2 text-muted-foreground/50">·</span>
+            <span className="tnum">
+              <AnimatedNumber value={totalKb} decimals={0} /> KB total
+            </span>
+          </span>
           <Button variant="ghost" size="sm" onClick={reset}>
             <HugeiconsIcon icon={Refresh01Icon} />
             Replace
@@ -150,10 +177,13 @@ export function EmotesFormatter() {
               type="button"
               key={preset.size}
               onClick={() =>
-                downloadBlob(blob, `${source.file.name.replace(/\.[^.]+$/, "")}-${preset.size}.png`)
+                downloadBlob(
+                  blob,
+                  `${source.file.name.replace(/\.[^.]+$/, "")}-${preset.size}.png`
+                )
               }
               className={cn(
-                "group relative flex flex-col overflow-hidden rounded-xl border bg-card text-left transition-colors hover:border-foreground/30"
+                "group relative flex flex-col overflow-hidden rounded-xl border bg-card text-left transition-all hover:-translate-y-0.5 hover:border-foreground/30 hover:shadow-e2"
               )}
             >
               <div className="relative flex flex-1 items-center justify-center bg-[image:repeating-linear-gradient(45deg,transparent_0_6px,color-mix(in_oklch,var(--muted)_50%,transparent)_6px_12px)] p-4">
@@ -169,7 +199,9 @@ export function EmotesFormatter() {
               </div>
               <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
                 <div className="min-w-0">
-                  <div className="truncate text-xs font-medium">{preset.label}</div>
+                  <div className="truncate text-xs font-medium tnum">
+                    {preset.label}
+                  </div>
                   <div className="truncate text-[11px] text-muted-foreground">
                     {preset.platform}
                   </div>
