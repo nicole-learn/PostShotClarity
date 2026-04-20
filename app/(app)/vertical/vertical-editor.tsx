@@ -238,7 +238,7 @@ export function VerticalEditor() {
 
       let outputUrl: string | null = null
       while (!outputUrl) {
-        await new Promise((r) => setTimeout(r, 2000))
+        await new Promise((r) => setTimeout(r, 3000))
         const progRes = await fetch(
           `/api/render-vertical/progress?${progressQuery}`
         )

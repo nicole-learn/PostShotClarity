@@ -57,6 +57,9 @@ export async function POST(req: NextRequest) {
       inputProps,
       privacy: "public",
       maxRetries: 1,
+      // Cap per-render parallelism. Each render uses at most `concurrency`
+      // chunk Lambdas + 1 orchestrator. Keeps us under low account quotas.
+      concurrency: 4,
       downloadBehavior: {
         type: "download",
         fileName: downloadName,

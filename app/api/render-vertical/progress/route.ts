@@ -25,6 +25,9 @@ export async function GET(req: NextRequest) {
       bucketName: outputBucket,
       functionName,
       region,
+      // Read render state directly from S3 instead of invoking the Lambda
+      // every poll — saves a Lambda invocation per 2s poll.
+      skipLambdaInvocation: true,
     })
 
     if (progress.fatalErrorEncountered) {
