@@ -10,8 +10,8 @@ PostShotClarity (header)
 Emotes Formatter
 GIF Generator from Clips
 Horizontal to Vertical
-Clip Searching
-Reel Editing 
+Caption Generator
+Add Meme Sounds
 
 (bottom aligned buttons)
 Support

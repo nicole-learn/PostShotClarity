@@ -135,10 +135,8 @@ function VerticalPreviewCard({ tool }: { tool: Tool }) {
 }
 
 export default function HomePage() {
-  const live = tools.filter((t) => !t.comingSoon)
-  const soon = tools.filter((t) => t.comingSoon)
-  const vertical = live.find((t) => t.slug === "vertical")
-  const others = live.filter((t) => t.slug !== "vertical")
+  const vertical = tools.find((t) => t.slug === "vertical")
+  const others = tools.filter((t) => t.slug !== "vertical")
   return (
     <div className="bg-mesh relative h-full overflow-y-auto">
       <div className="absolute inset-0 bg-noise opacity-[0.04] mix-blend-overlay" />
@@ -163,18 +161,6 @@ export default function HomePage() {
             <ToolCard key={t.slug} tool={t} />
           ))}
         </div>
-        {soon.length > 0 && (
-          <div className="space-y-3">
-            <div className="font-mono text-[9px] tracking-widest text-muted-foreground/80 uppercase">
-              Coming Soon
-            </div>
-            <div className="grid gap-3 md:grid-cols-2 md:gap-4">
-              {soon.map((t) => (
-                <ToolCard key={t.slug} tool={t} />
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

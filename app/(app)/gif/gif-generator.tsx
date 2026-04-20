@@ -62,15 +62,12 @@ export function GifGenerator() {
     []
   )
 
-  React.useEffect(() => {
-    let cancelled = false
+  const warmupFFmpeg = React.useCallback(() => {
+    if (ffmpegReady) return
     getFFmpeg()
-      .then(() => !cancelled && setFfmpegReady(true))
+      .then(() => setFfmpegReady(true))
       .catch(() => {})
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  }, [ffmpegReady])
 
   const loadFile = (f: File) => {
     if (videoUrl) URL.revokeObjectURL(videoUrl)
@@ -80,6 +77,7 @@ export function GifGenerator() {
     setGifUrl(null)
     setGifSize(0)
     setStageProgress(0)
+    warmupFFmpeg()
     pushRecent({ tool: "gif", name: f.name, size: f.size })
   }
 
@@ -235,7 +233,11 @@ export function GifGenerator() {
 
   if (!file || !videoUrl) {
     return (
-      <div className="h-full p-4 md:p-6">
+      <div
+        className="h-full p-4 md:p-6"
+        onPointerEnter={warmupFFmpeg}
+        onFocus={warmupFFmpeg}
+      >
         <Dropzone
           onFile={loadFile}
           accept="video/*"

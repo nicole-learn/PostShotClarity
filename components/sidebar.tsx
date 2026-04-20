@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  LifebuoyIcon,
+  FavouriteIcon,
   Menu01Icon,
   Moon02Icon,
   Sun03Icon,
@@ -52,7 +52,7 @@ function IconBtn({
   onClick?: () => void
   href?: string
   label: string
-  icon: typeof LifebuoyIcon
+  icon: typeof FavouriteIcon
 }) {
   const cls =
     "flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -165,18 +165,11 @@ function NavItem({
       {!collapsed && (
         <>
           <span className="truncate">{tool.name}</span>
-          <span className="ml-auto flex items-center gap-1.5">
-            {tool.comingSoon && (
-              <span className="font-mono text-[9px] tracking-wider text-muted-foreground/70 uppercase">
-                Soon
-              </span>
-            )}
-            {!tool.comingSoon && tool.shortcut && (
-              <kbd className="hidden rounded border bg-background/60 px-1 font-mono text-[9px] text-muted-foreground/80 group-hover:inline xl:inline">
-                ⌘{tool.shortcut}
-              </kbd>
-            )}
-          </span>
+          {tool.comingSoon && (
+            <span className="ml-auto font-mono text-[9px] tracking-wider text-muted-foreground/70 uppercase">
+              Soon
+            </span>
+          )}
         </>
       )}
     </Link>
@@ -261,7 +254,7 @@ function SidebarInner({
             : "items-center justify-between"
         )}
       >
-        <IconBtn href={SUPPORT_URL} label="Support" icon={LifebuoyIcon} />
+        <IconBtn href={SUPPORT_URL} label="Support" icon={FavouriteIcon} />
         <ThemeToggle />
         {onToggleCollapse && (
           <IconBtn
@@ -297,7 +290,7 @@ export function Sidebar() {
     <aside
       className={cn(
         "glass hidden shrink-0 border-r md:block",
-        collapsed ? "w-14" : "w-60"
+        collapsed ? "w-14" : "w-52"
       )}
     >
       <SidebarInner collapsed={collapsed} onToggleCollapse={toggleCollapsed} />
@@ -367,7 +360,7 @@ export function MobileTopBar() {
               <NavItems collapsed={false} onNavigate={() => setOpen(false)} />
             </div>
             <div className="absolute inset-x-0 bottom-0 flex items-center gap-1 border-t px-2 py-2">
-              <IconBtn href={SUPPORT_URL} label="Support" icon={LifebuoyIcon} />
+              <IconBtn href={SUPPORT_URL} label="Support" icon={FavouriteIcon} />
               <ThemeToggle />
             </div>
           </div>
