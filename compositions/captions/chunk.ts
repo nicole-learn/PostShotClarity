@@ -42,6 +42,36 @@ function rescaleWordsToLine(
 }
 
 /**
+ * Make the timed words reflect the editable line text. Pop and Karaoke render
+ * `chunk.words` rather than `chunk.text`, so keeping the original ASR words
+ * here would make right-panel edits invisible in those preview styles.
+ */
+function wordsForLineText(line: CaptionLine): TranscribedWord[] {
+  const tokens = line.text.split(/\s+/).filter(Boolean)
+  if (tokens.length === 0) return []
+
+  const rescaled = rescaleWordsToLine(line.words, line)
+  if (rescaled.length === tokens.length) {
+    return tokens.map((word, index) => ({
+      word,
+      start: rescaled[index].start,
+      end: rescaled[index].end,
+    }))
+  }
+
+  // If an edit adds or removes words, distribute the new tokens across the
+  // line's existing time span. This keeps the preview and exported animation
+  // usable without pretending the old word-level alignment is still valid.
+  const duration = Math.max(0.05, line.end - line.start)
+  const perToken = duration / tokens.length
+  return tokens.map((word, index) => ({
+    word,
+    start: line.start + index * perToken,
+    end: line.start + (index + 1) * perToken,
+  }))
+}
+
+/**
  * Pack each caption line's words into chunks whose joined text stays under
  * `maxChars` (spaces included). When `maxChars` is 0, each line renders as
  * a single chunk. Chunks are kept on screen until the next chunk takes
@@ -62,7 +92,7 @@ export function chunkLines(
       text: line.text,
       start: line.start,
       end: line.end,
-      words: rescaleWordsToLine(line.words, line),
+      words: wordsForLineText(line),
       indexInLine: 0,
     }))
   }
@@ -73,21 +103,9 @@ export function chunkLines(
     const tokens = line.text.split(/\s+/).filter(Boolean)
     if (tokens.length === 0) continue
 
-    const origJoined = line.words
-      .map((w) => w.word.trim())
-      .join(" ")
-      .trim()
-    const curJoined = tokens.join(" ")
-    const matches =
-      origJoined === curJoined && line.words.length === tokens.length
-
-    const rescaledWords = matches ? rescaleWordsToLine(line.words, line) : []
-    const duration = Math.max(0.05, line.end - line.start)
-    const perToken = duration / tokens.length
-    const slotStart = (i: number) =>
-      matches ? rescaledWords[i].start : line.start + i * perToken
-    const slotEnd = (i: number) =>
-      matches ? rescaledWords[i].end : line.start + (i + 1) * perToken
+    const timedWords = wordsForLineText(line)
+    const slotStart = (i: number) => timedWords[i].start
+    const slotEnd = (i: number) => timedWords[i].end
 
     // Greedy pack: take words while they still fit within maxChars
     // (including a space before each subsequent word). A single over-long
