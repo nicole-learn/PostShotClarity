@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
+    "postbuild": "node scripts/deploy-remotion-site-if-configured.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "node --experimental-strip-types --test compositions/captions/*.test.ts lib/*.test.ts",
@@ -13,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "remotion:studio": "remotion studio",
     "remotion:render": "remotion render",
-    "remotion:deploy-site": "remotion lambda sites create compositions/index.ts --site-name=postshotclarity",
+    "remotion:deploy-site": "FORCE_REMOTION_SITE_DEPLOY=1 node scripts/deploy-remotion-site-if-configured.mjs",
     "setup:cors": "node scripts/configure-s3-cors.mjs"
   },
   "dependencies": {
@@ -23,6 +24,7 @@
     "@hugeicons/core-free-icons": "^4.1.1",
     "@hugeicons/react": "^1.1.6",
     "@remotion/cli": "^4.0.448",
+    "@remotion/google-fonts": "4.0.448",
     "@remotion/lambda": "^4.0.448",
     "@remotion/player": "^4.0.448",
     "@upstash/ratelimit": "^2.0.8",

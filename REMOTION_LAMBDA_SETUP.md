@@ -156,6 +156,7 @@ npx remotion lambda functions deploy --memory=3009 --disk=10240 --timeout=240
 ```
 
 Notes on the flags:
+
 - `--memory=3009` — 3 GB. Good balance for 1080p h264 renders; Lambda CPU
   scales linearly with memory up to 3009 MB, above which you pay more without
   much speedup for our workload.
@@ -207,6 +208,11 @@ Next.js origin. A shortcut is in `package.json`:
 npm run remotion:deploy-site
 ```
 
+Production Vercel builds run this deployment automatically after `next build`.
+The production build fails if the Remotion site cannot be updated, which keeps
+the live preview and Lambda export from silently running different composition
+versions. Preview deployments and local builds skip the AWS deployment.
+
 ### 5c. (Optional) Check concurrency quota
 
 ```bash
@@ -249,15 +255,15 @@ let me know and I'll:
 
 `compositions/Root.tsx` registers three compositions that Lambda can render:
 
-| ID | Renders | Props source | Notes |
-| --- | --- | --- | --- |
-| `VerticalClip` | 1080×1920 h264 | `/api/render-vertical` | Reframe + webcam overlay |
-| `MemeSoundsClip` | source dimensions, h264 | `/api/render-meme-sounds` | Mixes user video with `<Audio>` tracks from `public/meme-sounds/` |
-| `Captions` | configurable, h264 | `/api/render-captions` (if wired) | Burn-in captions |
+| ID               | Renders                 | Props source                      | Notes                                                             |
+| ---------------- | ----------------------- | --------------------------------- | ----------------------------------------------------------------- |
+| `VerticalClip`   | 1080×1920 h264          | `/api/render-vertical`            | Reframe + webcam overlay                                          |
+| `MemeSoundsClip` | source dimensions, h264 | `/api/render-meme-sounds`         | Mixes user video with `<Audio>` tracks from `public/meme-sounds/` |
+| `Captions`       | configurable, h264      | `/api/render-captions` (if wired) | Burn-in captions                                                  |
 
 All three share the same Lambda function and Serve URL — you only have to
 deploy the function once. The site bundle (created by
-`remotion:deploy-site`) is what carries the composition code *and* any
+`remotion:deploy-site`) is what carries the composition code _and_ any
 `public/` assets the compositions reference; redeploy whenever either
 changes.
 
@@ -265,16 +271,16 @@ changes.
 
 ## Ongoing operations cheat sheet
 
-| Task | Command |
-| --- | --- |
-| Redeploy site after composition or `public/` changes | `npm run remotion:deploy-site` |
-| List deployed functions | `npx remotion lambda functions ls` |
-| List deployed sites | `npx remotion lambda sites ls` |
-| Remove an old function (after upgrading Remotion) | `npx remotion lambda functions rmall` |
-| Remove an old site | `npx remotion lambda sites rm <name>` |
-| Smoke-test `VerticalClip` from the CLI | `npx remotion lambda render "$REMOTION_AWS_SERVE_URL" VerticalClip` |
-| Smoke-test `MemeSoundsClip` from the CLI | `npx remotion lambda render "$REMOTION_AWS_SERVE_URL" MemeSoundsClip` |
-| Re-validate IAM setup | `npx remotion lambda policies validate` |
+| Task                                                 | Command                                                               |
+| ---------------------------------------------------- | --------------------------------------------------------------------- |
+| Redeploy site after composition or `public/` changes | `npm run remotion:deploy-site`                                        |
+| List deployed functions                              | `npx remotion lambda functions ls`                                    |
+| List deployed sites                                  | `npx remotion lambda sites ls`                                        |
+| Remove an old function (after upgrading Remotion)    | `npx remotion lambda functions rmall`                                 |
+| Remove an old site                                   | `npx remotion lambda sites rm <name>`                                 |
+| Smoke-test `VerticalClip` from the CLI               | `npx remotion lambda render "$REMOTION_AWS_SERVE_URL" VerticalClip`   |
+| Smoke-test `MemeSoundsClip` from the CLI             | `npx remotion lambda render "$REMOTION_AWS_SERVE_URL" MemeSoundsClip` |
+| Re-validate IAM setup                                | `npx remotion lambda policies validate`                               |
 
 ---
 

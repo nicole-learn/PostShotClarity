@@ -7,6 +7,7 @@ import { renderMediaOnLambda } from "@remotion/lambda/client"
 import { getRemotionConfig } from "@/lib/remotion-lambda"
 import { enforce, renderLimiter } from "@/lib/ratelimit"
 import { renderBody } from "@/lib/validation"
+import { captionsLambdaInputProps } from "@/compositions/captions/render-spec"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -38,11 +39,10 @@ export async function POST(req: NextRequest) {
     )
 
     const downloadName = `captions-${randomUUID()}.mp4`
-    const inputProps = {
-      ...parsed.data.props,
-      videoSrc: presignedVideoUrl,
-      useOffthread: true,
-    }
+    const inputProps = captionsLambdaInputProps(
+      parsed.data.props,
+      presignedVideoUrl
+    )
 
     const { renderId, bucketName: outputBucket } = await renderMediaOnLambda({
       region,

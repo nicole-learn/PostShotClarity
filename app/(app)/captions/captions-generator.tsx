@@ -32,9 +32,13 @@ import {
   type CaptionLine,
   type CaptionPresetIndex,
   type CaptionStyle,
-  type CaptionsProps,
   type TranscribedWord,
 } from "@/compositions/captions/types"
+import {
+  captionsRenderProps,
+  createCaptionsCompositionSpec,
+  type CaptionsCompositionSpec,
+} from "@/compositions/captions/render-spec"
 
 import { StylePicker } from "./style-picker"
 import { AnimationPicker } from "./animation-picker"
@@ -141,8 +145,7 @@ export function CaptionsGenerator() {
   const [layout, setLayout] = React.useState<CaptionLayout>(
     DEFAULT_CAPTION_LAYOUT
   )
-  const [animation, setAnimation] =
-    React.useState<CaptionAnimation>("fade")
+  const [animation, setAnimation] = React.useState<CaptionAnimation>("fade")
   const [presetIndex, setPresetIndex] =
     React.useState<CaptionPresetIndex>(DEFAULT_PRESET_INDEX)
   const [ffmpegReady, setFfmpegReady] = React.useState(false)
@@ -150,18 +153,52 @@ export function CaptionsGenerator() {
   const [exporting, setExporting] = React.useState(false)
   const [stageIndex, setStageIndex] = React.useState(0)
   const [stageProgress, setStageProgress] = React.useState(0)
-  const [stages, setStages] = React.useState<Array<{ label: string; weight: number }>>([
+  const [stages, setStages] = React.useState<
+    Array<{ label: string; weight: number }>
+  >([
     { label: "Extracting audio", weight: 1 },
     { label: "Transcribing", weight: 2 },
   ])
   const [playing, setPlaying] = React.useState(false)
   const [currentFrame, setCurrentFrame] = React.useState(0)
   const [outputUrl, setOutputUrl] = React.useState<string | null>(null)
+  const [activeRenderSpec, setActiveRenderSpec] =
+    React.useState<CaptionsCompositionSpec | null>(null)
   const playerRef = React.useRef<PlayerRef>(null)
   const probeRef = React.useRef<HTMLVideoElement>(null)
   const { push } = useToast()
 
   const busy = transcribing || exporting
+
+  // Preview and export are derived from this one canonical snapshot. The
+  // Player uses native video dimensions so fixed-pixel effects, font metrics,
+  // wrapping, and placement match the Lambda composition exactly.
+  const compositionSpec = React.useMemo(
+    () =>
+      createCaptionsCompositionSpec({
+        videoSrc: videoUrl ?? "",
+        lines,
+        style,
+        layout,
+        animation,
+        presetIndex,
+        durationSeconds: videoDuration,
+        width: videoWidth,
+        height: videoHeight,
+      }),
+    [
+      animation,
+      layout,
+      lines,
+      presetIndex,
+      style,
+      videoDuration,
+      videoHeight,
+      videoUrl,
+      videoWidth,
+    ]
+  )
+  const displayedSpec = activeRenderSpec ?? compositionSpec
 
   const warmupFFmpeg = React.useCallback(() => {
     if (ffmpegReady) return
@@ -335,6 +372,7 @@ export function CaptionsGenerator() {
 
   const exportVideo = React.useCallback(async () => {
     if (!file || !videoWidth || !videoHeight || lines.length === 0) return
+    const renderSpec = compositionSpec
     setStages([
       { label: "Uploading video", weight: 2 },
       { label: "Rendering", weight: 5 },
@@ -343,6 +381,7 @@ export function CaptionsGenerator() {
     setStageIndex(0)
     setStageProgress(0)
     setOutputUrl(null)
+    setActiveRenderSpec(renderSpec)
 
     try {
       const { uploadUrl, key, contentType } = await presign(
@@ -359,28 +398,12 @@ export function CaptionsGenerator() {
       setStageIndex(1)
       setStageProgress(0)
 
-      const duration = videoDuration || Math.max(...lines.map((l) => l.end), 1)
-      const durationInFrames = Math.max(
-        DEFAULT_CAPTION_FPS,
-        Math.ceil(duration * DEFAULT_CAPTION_FPS)
-      )
-
       const startRes = await fetch("/api/render-captions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           key,
-          props: {
-            lines,
-            style,
-            layout,
-            animation,
-            presetIndex,
-            fps: DEFAULT_CAPTION_FPS,
-            durationInFrames,
-            width: videoWidth,
-            height: videoHeight,
-          },
+          props: captionsRenderProps(renderSpec),
         }),
       })
       if (!startRes.ok) {
@@ -437,19 +460,9 @@ export function CaptionsGenerator() {
       push({ message: msg, variant: "error" })
     } finally {
       setExporting(false)
+      setActiveRenderSpec(null)
     }
-  }, [
-    animation,
-    file,
-    layout,
-    lines,
-    presetIndex,
-    push,
-    style,
-    videoDuration,
-    videoHeight,
-    videoWidth,
-  ])
+  }, [compositionSpec, file, lines, push, videoHeight, videoWidth])
 
   const updateLineText = (id: string, text: string) => {
     setLines((prev) => prev.map((l) => (l.id === id ? { ...l, text } : l)))
@@ -552,27 +565,6 @@ export function CaptionsGenerator() {
     }
   }, [videoUrl, videoWidth, videoHeight])
 
-  // Memoize so `inputProps` only changes when the underlying caption data does,
-  // not when the scrubber's currentFrame state re-renders the parent. A new
-  // object literal every frame was forcing the Player's composition to re-diff
-  // (and sometimes re-sync the <Video>), which in turn seeked the video backward
-  // across Sequence boundaries and remounted caption chunks — replaying the
-  // mount animation and making the caption appear to "play twice."
-  //
-  // This must live above the early return below so React sees the same hook
-  // order whether or not a file is loaded (Rules of Hooks).
-  const inputProps = React.useMemo<CaptionsProps>(
-    () => ({
-      videoSrc: videoUrl ?? "",
-      lines,
-      style,
-      layout,
-      animation,
-      presetIndex,
-    }),
-    [videoUrl, lines, style, layout, animation, presetIndex]
-  )
-
   if (!file || !videoUrl) {
     return (
       <div
@@ -590,28 +582,18 @@ export function CaptionsGenerator() {
     )
   }
 
-  const durationInFrames = Math.max(
-    30,
-    Math.ceil((videoDuration || 1) * PREVIEW_FPS)
-  )
-  // Cap the preview composition at 720p short-edge. The composition is CSS-scaled
-  // to fill the preview box anyway, and rasterizing captions (text-shadow, stroke,
-  // backdrop-filter, drop-shadow) at native 1080p/4K is the main source of
-  // scrub/playback stutter. Lambda render uses the untouched native size.
-  const PREVIEW_MAX_SHORT_EDGE = 720
-  const rawW = videoWidth || 1280
-  const rawH = videoHeight || 720
-  const previewScale = Math.min(
-    1,
-    PREVIEW_MAX_SHORT_EDGE / Math.max(1, Math.min(rawW, rawH))
-  )
-  const compositionWidth = Math.max(2, Math.round((rawW * previewScale) / 2) * 2)
-  const compositionHeight = Math.max(2, Math.round((rawH * previewScale) / 2) * 2)
+  const durationInFrames = displayedSpec.durationInFrames
+  const compositionWidth = displayedSpec.width
+  const compositionHeight = displayedSpec.height
   const probeReady = videoWidth > 0 && videoHeight > 0
   const hasLines = lines.length > 0
 
   return (
-    <div className="flex h-full flex-col gap-4 p-4 md:grid md:grid-cols-[150px_170px_1fr_320px] md:grid-rows-[1fr_auto] md:gap-4 md:p-5">
+    <div
+      className="flex h-full flex-col gap-4 p-4 md:grid md:grid-cols-[150px_170px_1fr_320px] md:grid-rows-[1fr_auto] md:gap-4 md:p-5"
+      inert={busy}
+      aria-busy={busy}
+    >
       <video
         ref={probeRef}
         src={videoUrl}
@@ -652,7 +634,7 @@ export function CaptionsGenerator() {
         </div>
       </aside>
 
-      <div className="md:col-start-1 md:col-span-2 md:row-start-2">
+      <div className="md:col-span-2 md:col-start-1 md:row-start-2">
         <CharsPerLineSlider
           value={layout.maxCharsPerLine}
           onChange={(n) => setLayout((l) => ({ ...l, maxCharsPerLine: n }))}
@@ -700,11 +682,11 @@ export function CaptionsGenerator() {
               <Player
                 ref={playerRef}
                 component={Captions}
-                inputProps={inputProps}
+                inputProps={displayedSpec.inputProps}
                 durationInFrames={durationInFrames}
                 compositionWidth={compositionWidth}
                 compositionHeight={compositionHeight}
-                fps={PREVIEW_FPS}
+                fps={displayedSpec.fps}
                 style={PLAYER_STYLE}
                 clickToPlay={false}
                 controls={false}
@@ -900,9 +882,9 @@ function CaptionRow({
         "group relative flex items-start gap-1.5 px-2 py-2 transition-colors hover:bg-muted/40",
         isDragging && "opacity-40",
         showTopInsertLine &&
-          "before:absolute before:top-0 before:left-2 before:right-2 before:h-0.5 before:bg-primary",
+          "before:absolute before:top-0 before:right-2 before:left-2 before:h-0.5 before:bg-primary",
         showBottomInsertLine &&
-          "after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:bg-primary"
+          "after:absolute after:right-2 after:bottom-0 after:left-2 after:h-0.5 after:bg-primary"
       )}
     >
       <button
@@ -939,7 +921,7 @@ function CaptionRow({
           }}
           aria-label="Start time"
           title="Start time"
-          className="w-14 rounded px-1 py-0.5 text-left font-mono text-[10px] tracking-tight text-muted-foreground tnum hover:bg-muted focus:bg-background focus:text-foreground focus:outline focus:outline-1 focus:outline-border"
+          className="tnum w-14 rounded px-1 py-0.5 text-left font-mono text-[10px] tracking-tight text-muted-foreground hover:bg-muted focus:bg-background focus:text-foreground focus:outline focus:outline-1 focus:outline-border"
         />
         <input
           type="text"
@@ -956,7 +938,7 @@ function CaptionRow({
           }}
           aria-label="End time"
           title="End time"
-          className="w-14 rounded px-1 py-0.5 text-left font-mono text-[10px] tracking-tight text-muted-foreground tnum hover:bg-muted focus:bg-background focus:text-foreground focus:outline focus:outline-1 focus:outline-border"
+          className="tnum w-14 rounded px-1 py-0.5 text-left font-mono text-[10px] tracking-tight text-muted-foreground hover:bg-muted focus:bg-background focus:text-foreground focus:outline focus:outline-1 focus:outline-border"
         />
       </div>
       <textarea

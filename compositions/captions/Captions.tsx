@@ -1,4 +1,5 @@
 import * as React from "react"
+import { loadFont } from "@remotion/google-fonts/Inter"
 import {
   AbsoluteFill,
   OffthreadVideo,
@@ -32,8 +33,13 @@ import {
   type StylePresetMap,
 } from "./types"
 
-const SANS =
-  '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, Roboto, "Helvetica Neue", Arial, sans-serif'
+// Load the same exact font files in the browser Player and Linux Lambda.
+// System font stacks resolve differently across operating systems and can
+// change wrapping, glyph widths, and therefore the final caption layout.
+const { fontFamily: SANS } = loadFont("normal", {
+  weights: ["700", "800", "900"],
+  subsets: ["latin", "latin-ext"],
+})
 
 const STYLE_BASE_FONT: Record<CaptionStyle, number> = {
   clean: 0.065,
@@ -82,10 +88,7 @@ export const Captions: React.FC<CaptionsProps> = ({
       {videoSrc ? <VideoComp src={videoSrc} /> : null}
       {chunks.map((chunk, i) => {
         const from = Math.max(0, Math.round(chunk.start * fps))
-        const rawDur = Math.max(
-          1,
-          Math.round((chunk.end - chunk.start) * fps)
-        )
+        const rawDur = Math.max(1, Math.round((chunk.end - chunk.start) * fps))
         // Clamp each chunk's end to the next chunk's start. Without this,
         // ASR-provided word timings that slightly overlap (common on fast
         // speech) + `Math.max(lastEnd, nextStart)` in chunkLines make two
@@ -137,13 +140,7 @@ type RouterProps<S extends CaptionStyle = CaptionStyle> = {
   preset: StylePresetMap[S]
 }
 
-function ChunkRouter({
-  chunk,
-  style,
-  layout,
-  animation,
-  preset,
-}: RouterProps) {
+function ChunkRouter({ chunk, style, layout, animation, preset }: RouterProps) {
   switch (style) {
     case "pop":
       return (
