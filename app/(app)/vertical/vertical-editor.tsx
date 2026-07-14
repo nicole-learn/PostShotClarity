@@ -275,7 +275,14 @@ export function VerticalEditor() {
           contentType: video.file.type || "video/mp4",
         }),
       })
-      if (!presignRes.ok) throw new Error("Couldn't get upload URL")
+      if (!presignRes.ok) {
+        const body = (await presignRes.json().catch(() => null)) as {
+          error?: string
+        } | null
+        throw new Error(
+          body?.error || `Couldn't get upload URL (${presignRes.status})`
+        )
+      }
       const { uploadUrl, key, contentType } = (await presignRes.json()) as {
         uploadUrl: string
         key: string

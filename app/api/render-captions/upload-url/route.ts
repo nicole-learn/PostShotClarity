@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto"
 import { PutObjectCommand } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 
-import { bucketName, s3 } from "@/lib/remotion-lambda"
+import { getRemotionConfig } from "@/lib/remotion-lambda"
 import { enforce, uploadUrlLimiter } from "@/lib/ratelimit"
 import {
   AUDIO_CONTENT_TYPE,
@@ -43,15 +43,24 @@ export async function POST(req: NextRequest) {
   const folder = isAudio ? "captions-audio" : "inputs"
   const key = `${folder}/${randomUUID()}.${ext}`
 
-  const uploadUrl = await getSignedUrl(
-    s3,
-    new PutObjectCommand({
-      Bucket: bucketName,
-      Key: key,
-      ContentType: contentType,
-    }),
-    { expiresIn: 900 }
-  )
+  try {
+    const { bucketName, s3 } = getRemotionConfig()
+    const uploadUrl = await getSignedUrl(
+      s3,
+      new PutObjectCommand({
+        Bucket: bucketName,
+        Key: key,
+        ContentType: contentType,
+      }),
+      { expiresIn: 900 }
+    )
 
-  return NextResponse.json({ uploadUrl, key, contentType })
+    return NextResponse.json({ uploadUrl, key, contentType })
+  } catch (error) {
+    console.error("Failed to create captions upload URL", error)
+    return NextResponse.json(
+      { error: "Upload service is temporarily unavailable" },
+      { status: 503 }
+    )
+  }
 }

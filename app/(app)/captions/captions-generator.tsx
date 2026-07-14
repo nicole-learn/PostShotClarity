@@ -93,7 +93,12 @@ async function presign(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ fileName, contentType, prefix }),
   })
-  if (!res.ok) throw new Error("Couldn't get upload URL")
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as {
+      error?: string
+    } | null
+    throw new Error(body?.error || `Couldn't get upload URL (${res.status})`)
+  }
   return (await res.json()) as UploadUrlResponse
 }
 

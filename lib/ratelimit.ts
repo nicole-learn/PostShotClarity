@@ -49,20 +49,30 @@ export async function enforce(
 ): Promise<NextResponse | null> {
   if (!limiter) return null
   const ip = clientIp(req)
-  const { success, limit, remaining, reset } = await limiter.limit(
-    `${bucket}:${ip}`
-  )
-  if (success) return null
-  return NextResponse.json(
-    { error: "Too many requests" },
-    {
-      status: 429,
-      headers: {
-        "X-RateLimit-Limit": String(limit),
-        "X-RateLimit-Remaining": String(remaining),
-        "X-RateLimit-Reset": String(reset),
-        "Retry-After": String(Math.max(1, Math.ceil((reset - Date.now()) / 1000))),
-      },
-    }
-  )
+  try {
+    const { success, limit, remaining, reset } = await limiter.limit(
+      `${bucket}:${ip}`
+    )
+    if (success) return null
+    return NextResponse.json(
+      { error: "Too many requests" },
+      {
+        status: 429,
+        headers: {
+          "X-RateLimit-Limit": String(limit),
+          "X-RateLimit-Remaining": String(remaining),
+          "X-RateLimit-Reset": String(reset),
+          "Retry-After": String(
+            Math.max(1, Math.ceil((reset - Date.now()) / 1000))
+          ),
+        },
+      }
+    )
+  } catch (error) {
+    // Rate limiting is a guardrail, not a hard dependency. If Redis is
+    // unavailable (for example, an Upstash database was paused or removed),
+    // failing open keeps uploads, transcription, and rendering operational.
+    console.error(`[ratelimit] ${bucket} unavailable; allowing request`, error)
+    return null
+  }
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { DeleteObjectCommand } from "@aws-sdk/client-s3"
 import { getRenderProgress } from "@remotion/lambda/client"
 
-import { bucketName, functionName, region, s3 } from "@/lib/remotion-lambda"
+import { getRemotionConfig } from "@/lib/remotion-lambda"
 import { enforce, progressLimiter } from "@/lib/ratelimit"
 import { anyInputKey, renderId as renderIdSchema } from "@/lib/validation"
 
@@ -21,6 +21,17 @@ export async function GET(req: NextRequest) {
   if (!renderIdParsed.success) {
     return NextResponse.json({ error: "Invalid renderId" }, { status: 400 })
   }
+  let config: ReturnType<typeof getRemotionConfig>
+  try {
+    config = getRemotionConfig()
+  } catch (error) {
+    console.error("Render progress service is not configured", error)
+    return NextResponse.json(
+      { error: "Render service is temporarily unavailable" },
+      { status: 503 }
+    )
+  }
+  const { bucketName, functionName, region, s3 } = config
   if (outputBucket !== bucketName) {
     return NextResponse.json({ error: "Invalid bucketName" }, { status: 400 })
   }

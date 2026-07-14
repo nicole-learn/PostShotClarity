@@ -6,7 +6,7 @@ import {
 } from "@aws-sdk/client-s3"
 import OpenAI, { toFile } from "openai"
 
-import { bucketName, s3 } from "@/lib/remotion-lambda"
+import { getRemotionConfig } from "@/lib/remotion-lambda"
 import { enforce, transcribeLimiter } from "@/lib/ratelimit"
 import { transcribeBody } from "@/lib/validation"
 
@@ -37,6 +37,17 @@ export async function POST(req: NextRequest) {
   const key = parsed.data.key
 
   const openai = new OpenAI({ apiKey })
+  let storage: ReturnType<typeof getRemotionConfig>
+  try {
+    storage = getRemotionConfig()
+  } catch (error) {
+    console.error("Transcription storage is not configured", error)
+    return NextResponse.json(
+      { error: "Transcription service is temporarily unavailable" },
+      { status: 503 }
+    )
+  }
+  const { bucketName, s3 } = storage
 
   try {
     const head = await s3

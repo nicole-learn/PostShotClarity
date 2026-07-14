@@ -7,17 +7,19 @@ function requireEnv(name: string): string {
   return value
 }
 
-export const region = requireEnv("REMOTION_AWS_REGION") as AwsRegion
-export const functionName = requireEnv("REMOTION_AWS_FUNCTION_NAME")
-export const serveUrl = requireEnv("REMOTION_AWS_SERVE_URL")
+export function getRemotionConfig() {
+  const region = requireEnv("REMOTION_AWS_REGION") as AwsRegion
+  const functionName = requireEnv("REMOTION_AWS_FUNCTION_NAME")
+  const serveUrl = requireEnv("REMOTION_AWS_SERVE_URL")
+  const accessKeyId = requireEnv("REMOTION_AWS_ACCESS_KEY_ID")
+  const secretAccessKey = requireEnv("REMOTION_AWS_SECRET_ACCESS_KEY")
 
-const accessKeyId = requireEnv("REMOTION_AWS_ACCESS_KEY_ID")
-const secretAccessKey = requireEnv("REMOTION_AWS_SECRET_ACCESS_KEY")
+  // Inputs are staged in the same S3 bucket that hosts the deployed site.
+  const bucketName = new URL(serveUrl).hostname.split(".")[0]!
+  const s3 = new S3Client({
+    region,
+    credentials: { accessKeyId, secretAccessKey },
+  })
 
-// Inputs are staged in the same S3 bucket that hosts the deployed site.
-export const bucketName = new URL(serveUrl).hostname.split(".")[0]
-
-export const s3 = new S3Client({
-  region,
-  credentials: { accessKeyId, secretAccessKey },
-})
+  return { bucketName, functionName, region, s3, serveUrl }
+}

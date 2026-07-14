@@ -4,13 +4,7 @@ import { GetObjectCommand } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 import { renderMediaOnLambda } from "@remotion/lambda/client"
 
-import {
-  bucketName,
-  functionName,
-  region,
-  s3,
-  serveUrl,
-} from "@/lib/remotion-lambda"
+import { getRemotionConfig } from "@/lib/remotion-lambda"
 import { enforce, renderLimiter } from "@/lib/ratelimit"
 import { renderBody } from "@/lib/validation"
 
@@ -35,6 +29,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const { bucketName, functionName, region, s3, serveUrl } =
+      getRemotionConfig()
     const presignedVideoUrl = await getSignedUrl(
       s3,
       new GetObjectCommand({ Bucket: bucketName, Key: parsed.data.key }),
