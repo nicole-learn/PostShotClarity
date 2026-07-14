@@ -14,6 +14,28 @@ const token =
   process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN
 
 const redis = url && token ? new Redis({ url, token }) : null
+const RATELIMIT_TIMEOUT_MS = 1_000
+const RATELIMIT_BACKOFF_MS = 60_000
+let rateLimitUnavailableUntil = 0
+
+function withTimeout<T>(promise: Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error("Rate limit service timed out")),
+      RATELIMIT_TIMEOUT_MS
+    )
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      }
+    )
+  })
+}
 
 function make(tokens: number, window: `${number} s` | `${number} m`) {
   if (!redis) return null
@@ -48,10 +70,11 @@ export async function enforce(
   bucket: string
 ): Promise<NextResponse | null> {
   if (!limiter) return null
+  if (Date.now() < rateLimitUnavailableUntil) return null
   const ip = clientIp(req)
   try {
-    const { success, limit, remaining, reset } = await limiter.limit(
-      `${bucket}:${ip}`
+    const { success, limit, remaining, reset } = await withTimeout(
+      limiter.limit(`${bucket}:${ip}`)
     )
     if (success) return null
     return NextResponse.json(
@@ -72,6 +95,7 @@ export async function enforce(
     // Rate limiting is a guardrail, not a hard dependency. If Redis is
     // unavailable (for example, an Upstash database was paused or removed),
     // failing open keeps uploads, transcription, and rendering operational.
+    rateLimitUnavailableUntil = Date.now() + RATELIMIT_BACKOFF_MS
     console.error(`[ratelimit] ${bucket} unavailable; allowing request`, error)
     return null
   }
