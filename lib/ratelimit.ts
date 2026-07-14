@@ -51,6 +51,8 @@ function make(tokens: number, window: `${number} s` | `${number} m`) {
 export const renderLimiter = make(5, "1 m")
 // OpenAI Whisper billed per-minute of audio; keep very tight.
 export const transcribeLimiter = make(5, "1 m")
+// Gemini grouping is cheaper than transcription but still a billed API call.
+export const captionGroupingLimiter = make(10, "1 m")
 // Upload URL issuance is cheap but lets callers fill the bucket.
 export const uploadUrlLimiter = make(30, "1 m")
 // Progress is polled every ~2s from the client, needs a higher ceiling.

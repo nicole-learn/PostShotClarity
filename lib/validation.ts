@@ -65,3 +65,14 @@ export const renderBody = z.object({
 export const transcribeBody = z.object({
   key: inputAudioKey,
 })
+
+const transcribedWord = z.object({
+  word: z.string().min(1).max(100),
+  start: z.number().finite().nonnegative(),
+  end: z.number().finite().nonnegative(),
+})
+
+export const captionGroupBody = z.object({
+  words: z.array(transcribedWord).min(1).max(10_000),
+  language: z.string().max(50).optional(),
+})

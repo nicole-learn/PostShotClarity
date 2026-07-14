@@ -66,8 +66,9 @@ export const Captions: React.FC<CaptionsProps> = ({
   const preset = resolvePreset(style, presets)
 
   const effectiveMaxChars = React.useMemo(() => {
-    // "Auto" (slider = 0) → one word per chunk for a punchy, modern feel.
-    if (effective.maxCharsPerLine <= 0) return 1
+    // 0 keeps the semantic caption groups intact. Positive values let the
+    // user override them with character-based chunks.
+    if (effective.maxCharsPerLine <= 0) return 0
     return Math.max(1, Math.round(effective.maxCharsPerLine))
   }, [effective.maxCharsPerLine])
 

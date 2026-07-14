@@ -48,6 +48,10 @@ type TranscribeResponse = {
   language?: string
 }
 
+type GroupCaptionsResponse = {
+  lines: CaptionLine[]
+}
+
 type UploadUrlResponse = {
   uploadUrl: string
   key: string
@@ -215,7 +219,8 @@ export function CaptionsGenerator() {
     setStages([
       { label: "Extracting audio", weight: 1 },
       { label: "Uploading", weight: 1 },
-      { label: "Transcribing", weight: 2 },
+      { label: "Transcribing words", weight: 2 },
+      { label: "Smart grouping", weight: 1 },
     ])
     setTranscribing(true)
     setStageIndex(0)
@@ -261,8 +266,6 @@ export function CaptionsGenerator() {
         window.clearInterval(timer)
       }
 
-      setStageProgress(1)
-
       if (!data.words || data.words.length === 0) {
         push({
           message: "No speech detected in this clip",
@@ -271,9 +274,45 @@ export function CaptionsGenerator() {
         return
       }
 
-      setLines(groupWordsIntoLines(data.words))
+      setStageProgress(1)
+      setStageIndex(3)
+      setStageProgress(0)
+
+      let smartLines: CaptionLine[] | null = null
+      const groupingStartedAt = Date.now()
+      const groupingTimer = window.setInterval(() => {
+        const elapsed = (Date.now() - groupingStartedAt) / 1000
+        setStageProgress(Math.min(0.95, elapsed / 10))
+      }, 250)
+      try {
+        const groupingRes = await fetch("/api/group-captions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            words: data.words,
+            language: data.language,
+          }),
+        })
+        if (groupingRes.ok) {
+          const grouped = (await groupingRes.json()) as GroupCaptionsResponse
+          if (Array.isArray(grouped.lines) && grouped.lines.length > 0) {
+            smartLines = grouped.lines
+          }
+        }
+      } catch {
+        // The timestamp-based local grouper is the resilient fallback when
+        // Gemini is unavailable or rejects the transcript.
+      } finally {
+        window.clearInterval(groupingTimer)
+      }
+
+      const nextLines = smartLines ?? groupWordsIntoLines(data.words)
+      setStageProgress(1)
+      setLines(nextLines)
       push({
-        message: `Transcribed ${data.words.length} words`,
+        message: smartLines
+          ? `Created ${nextLines.length} smart caption groups`
+          : `Transcribed ${data.words.length} words`,
         variant: "success",
       })
     } catch (err) {
