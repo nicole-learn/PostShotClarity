@@ -139,8 +139,12 @@ test("the Gemini structured-output schema requires words and timestamps", () => 
   ])
   const groupSchema =
     request.generationConfig.responseSchema.properties.groups.items
+  const groupsSchema = request.generationConfig.responseSchema.properties.groups
   const wordSchema = groupSchema.properties.words.items
 
+  // A group-array maxItems makes Vertex multiply the nested word schema by
+  // that number and reject longer transcripts as too complex.
+  assert.equal("maxItems" in groupsSchema, false)
   assert.deepEqual(groupSchema.required, ["startIndex", "endIndex", "words"])
   assert.deepEqual(wordSchema.required, ["sourceIndex", "word", "start", "end"])
   assert.match(request.contents[0].parts[0].text, /2\.12345/)

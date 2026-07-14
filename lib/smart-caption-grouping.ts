@@ -206,7 +206,6 @@ export function geminiGroupingRequestBody(
           groups: {
             type: "array",
             minItems: 1,
-            maxItems: words.length,
             items: {
               type: "object",
               properties: {
@@ -299,7 +298,13 @@ async function requestSmartCaptionGroups(
   })
 
   if (!response.ok) {
-    throw new Error(`Gemini grouping failed (${response.status})`)
+    const details = (await response.text())
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 1_000)
+    throw new Error(
+      `Gemini grouping failed (${response.status})${details ? `: ${details}` : ""}`
+    )
   }
 
   const json = (await response.json()) as GeminiResponse
