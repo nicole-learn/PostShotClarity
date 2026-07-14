@@ -30,8 +30,7 @@ export function extOf(fileName: string): string {
 // S3 keys we issue all follow `<prefix>/<uuid>.<ext>`. Refusing anything else
 // means the progress/transcribe/render endpoints can't be tricked into
 // touching arbitrary objects in the bucket.
-const UUID_RE =
-  "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+const UUID_RE = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 
 export const inputVideoKey = z
   .string()
@@ -72,7 +71,27 @@ const transcribedWord = z.object({
   end: z.number().finite().nonnegative(),
 })
 
-export const captionGroupBody = z.object({
-  words: z.array(transcribedWord).min(1).max(10_000),
-  language: z.string().max(50).optional(),
-})
+export const captionGroupBody = z
+  .object({
+    words: z.array(transcribedWord).min(1).max(10_000),
+    language: z.string().max(50).optional(),
+  })
+  .superRefine(({ words }, ctx) => {
+    for (let index = 0; index < words.length; index++) {
+      const word = words[index]
+      if (word.end <= word.start) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["words", index, "end"],
+          message: "Word end must be after its start",
+        })
+      }
+      if (index > 0 && word.start < words[index - 1].start) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["words", index, "start"],
+          message: "Word timestamps must be in source order",
+        })
+      }
+    }
+  })
