@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --experimental-strip-types --test compositions/captions/chunk.test.ts",
+    "test": "node --experimental-strip-types --test compositions/captions/*.test.ts lib/*.test.ts",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
     "remotion:studio": "remotion studio",

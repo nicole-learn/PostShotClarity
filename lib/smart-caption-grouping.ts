@@ -33,6 +33,12 @@ type ServiceAccount = {
   project_id?: string
 }
 
+export type SmartCaptionGroup = {
+  startIndex: number
+  endIndex: number
+  text: string
+}
+
 function promptFor(words: TranscribedWord[], language?: string): string {
   const indexedWords = words.map((word, index) => ({
     index,
@@ -70,7 +76,7 @@ function textFrom(response: GeminiResponse): string | null {
   return null
 }
 
-function timedWordsForText(
+export function timedWordsForText(
   source: TranscribedWord[],
   polishedText: string
 ): TranscribedWord[] {
@@ -93,16 +99,16 @@ function timedWordsForText(
   }))
 }
 
-function buildLines(
+export function buildSmartCaptionLines(
   words: TranscribedWord[],
-  parsed: z.infer<typeof responseSchema>
+  groups: SmartCaptionGroup[]
 ): CaptionLine[] | null {
-  if (parsed.groups.length === 0) return null
+  if (groups.length === 0) return null
 
   const lines: CaptionLine[] = []
   let expectedIndex = 0
 
-  for (const group of parsed.groups) {
+  for (const group of groups) {
     if (
       group.startIndex !== expectedIndex ||
       group.endIndex < group.startIndex ||
@@ -122,12 +128,28 @@ function buildLines(
     }
 
     const text = group.text.replace(/\s+/g, " ").trim()
+    const timedWords = timedWordsForText(source, text)
+    const displayTokens = text.split(/\s+/).filter(Boolean)
+    if (
+      timedWords.length !== displayTokens.length ||
+      timedWords.some(
+        (word, index) =>
+          word.word !== displayTokens[index] ||
+          !Number.isFinite(word.start) ||
+          !Number.isFinite(word.end) ||
+          word.end <= word.start ||
+          (index > 0 && word.start < timedWords[index - 1].start)
+      )
+    ) {
+      return null
+    }
+
     lines.push({
       id: `line-${lines.length}-${source[0].start.toFixed(3)}`,
       text,
       start: source[0].start,
       end: source[source.length - 1].end,
-      words: timedWordsForText(source, text),
+      words: timedWords,
     })
     expectedIndex = group.endIndex + 1
   }
@@ -212,5 +234,5 @@ export async function generateSmartCaptionLines(
   const parsed = responseSchema.safeParse(JSON.parse(text))
   if (!parsed.success) throw new Error("Gemini returned invalid caption groups")
 
-  return buildLines(words, parsed.data)
+  return buildSmartCaptionLines(words, parsed.data.groups)
 }
